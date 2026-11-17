@@ -354,3 +354,33 @@ describe("email grammar", () => {
     expect(possessive("Plausible Analytics")).toBe("Plausible Analytics'");
   });
 });
+
+describe("dashboard analytics", () => {
+  it("computes totals, daily series, calendar and verdict shares from stored runs", async () => {
+    const { computeAnalytics } = await import("@/lib/analytics");
+    const mk = (domain: string, q: "qualified" | "disqualified", sent: boolean) => {
+      const s = initialState({ id: domain, domain });
+      s.qualification = q;
+      s.emailStatus = sent ? "sent" : "none";
+      s.emailBody = sent ? "Hi" : null;
+      s.hitCount = 2;
+      s.pages = [{ url: `https://${domain}/`, pageType: "homepage", hitNumber: 1, fetchStatus: "ok", httpStatus: 200, selectionReason: "", targetField: null, title: "", wordCount: 100, attempts: 1, fetchedAt: "" }, { url: `https://${domain}/security`, pageType: "security", hitNumber: 2, fetchStatus: "ok", httpStatus: 200, selectionReason: "", targetField: null, title: "", wordCount: 100, attempts: 1, fetchedAt: "" }];
+      s.evidence = [{ field: "certification", value: "SOC 2", sourceUrl: `https://${domain}/security`, sourceTitle: "", extractedAt: "", confidence: 0.9, supportingQuote: "SOC 2" }];
+      return s;
+    };
+    const now = new Date(2026, 10, 17, 12);
+    const runs = [{ id: "r1", createdAt: new Date(2026, 10, 17, 9).toISOString(), input: "", rejected: [], results: [mk("a.com", "qualified", true), mk("b.com", "disqualified", false)] }];
+    const a = computeAnalytics(runs, 7, now);
+    expect(a.totals.researched).toBe(2);
+    expect(a.totals.qualified).toBe(1);
+    expect(a.totals.emailsSent).toBe(1);
+    expect(a.qualifiedRate).toBe(0.5);
+    expect(a.daily).toHaveLength(7);
+    expect(a.daily[6]).toMatchObject({ label: "17 Nov", researched: 2, qualified: 1 });
+    expect(a.calendar.days.find((d) => d.day === 17)?.runs).toBe(1);
+    expect(a.pagesByType.find((p) => p.type === "security")?.count).toBe(2);
+    expect(a.verdicts.find((v) => v.key === "qualified")?.share).toBe(0.5);
+    expect(a.topSignals[0]).toEqual({ label: "Certified: SOC 2", count: 2 });
+    expect(computeAnalytics([], 7, now).qualifiedRate).toBeNull(); // empty state never divides by zero
+  });
+});

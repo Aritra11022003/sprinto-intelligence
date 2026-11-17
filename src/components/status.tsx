@@ -12,7 +12,7 @@ export function QualificationBadge({ q }: { q: string }) {
   if (!v) {
     return (
       <Badge tone="blue">
-        <span className="h-1.5 w-1.5 animate-[var(--animate-pulse-soft)] rounded-full bg-brand-500" /> RESEARCHING
+        <span className="h-1.5 w-1.5 animate-[var(--animate-pulse-soft)] rounded-full bg-violet-300" /> RESEARCHING
       </Badge>
     );
   }

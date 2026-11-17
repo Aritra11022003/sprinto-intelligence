@@ -14,15 +14,17 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${geist.variable} ${geistMono.variable}`}>
-      <body className="min-h-screen font-sans antialiased">
-        <SiteHeader />
-        <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">{children}</main>
-        <footer className="mx-auto max-w-6xl px-4 pb-10 sm:px-6">
-          <div className="flex flex-col gap-2 border-t border-slate-200/80 pt-6 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+      <body className="font-sans antialiased">
+        <div className="mx-auto max-w-[1280px] px-2 py-3 sm:px-6 sm:py-8">
+          <div className="rounded-[26px] bg-[#0b0b0e] p-3 shadow-[0_30px_80px_-20px_rgba(30,27,75,0.55)] ring-1 ring-black/40 sm:rounded-[34px] sm:p-6">
+            <SiteHeader />
+            <main className="mt-5 sm:mt-6">{children}</main>
+          </div>
+          <footer className="mt-5 flex flex-col gap-1 px-2 text-xs text-indigo-950/70 sm:flex-row sm:items-center sm:justify-between">
             <span>Sprinto Intelligence · built for the MESA Cold Outreach case</span>
             <span>Max 5 pages per company · respects robots.txt · never bypasses CAPTCHA or logins · emails only you</span>
-          </div>
-        </footer>
+          </footer>
+        </div>
       </body>
     </html>
   );
