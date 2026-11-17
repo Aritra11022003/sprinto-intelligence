@@ -18,6 +18,17 @@ function roleLabel(title: string | null): string {
   return "the person who'd own this";
 }
 
+/** Turn an enterprise-signal label into a grammatical opening sentence. */
+export function enterpriseHook(company: string, label: string): string {
+  const l = label.toLowerCase();
+  if (/enterprise plan|tier/.test(l)) return `I noticed ${company} now has an Enterprise plan.`;
+  if (/sso|saml/.test(l)) return `I noticed ${company} offers SSO and SAML for enterprise customers.`;
+  if (/custom pricing|sales-led/.test(l)) return `I noticed ${company} sells its larger plans through sales with custom pricing.`;
+  if (/audit log|sla|dedicated/.test(l)) return `I noticed ${company} offers enterprise features like audit logs and dedicated support.`;
+  if (/large enterprises|fortune/.test(l)) return `I noticed ${company} is already selling to large enterprises.`;
+  return `I noticed ${company}'s enterprise offering (${lowerFirst(label)}).`;
+}
+
 export function generateEmail(s: ResearchState, kinds: PainKind[], hooks: EvidenceItem[]): EmailDraft {
   const company = s.companyName ?? s.domain;
   const first = s.contact?.name.split(/\s+/)[0] ?? null;
@@ -37,7 +48,7 @@ export function generateEmail(s: ResearchState, kinds: PainKind[], hooks: Eviden
   };
   const openers: Record<PainKind, string> = {
     security_hiring: `I saw ${company} is hiring for "${v.replace(/^Hiring for security\/compliance:\s*/i, "")}". That usually means compliance is moving from a side project to a real priority.`,
-    enterprise: `I noticed ${company} offers ${lowerFirst(v)}. That usually means larger customers are starting to send security questionnaires and ask for a SOC 2 report.`,
+    enterprise: `${enterpriseHook(company, v)} That usually means larger customers are starting to send security questionnaires and ask for a SOC 2 report.`,
     questionnaires: `I noticed ${company}'s site covers ${lowerFirst(v.replace(/ (mentioned|offered|published)$/i, ""))}. Teams at this point often find questionnaires and audit evidence quietly eating engineering time.`,
     growth: `With ${s.openRoleCount} open roles on your careers page, ${company} is clearly growing fast, and every new hire adds access reviews and onboarding evidence an auditor will ask for.`,
     funding: `Congrats on the ${s.fundingStage}. That is usually the point where enterprise prospects start asking for SOC 2 before they sign.`,

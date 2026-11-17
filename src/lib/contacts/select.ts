@@ -34,13 +34,22 @@ function cleanTitle(t: string): string | null {
  * A title that points at an organisation other than this company is not an employee.
  */
 export function worksElsewhere(title: string, companyKeys: string[]): boolean {
-  const m = title.match(/(?:\bat\b|@|,|\||–|—|\bof\b)\s*([A-Z][\w.&' -]{1,40})$/) ?? title.match(/\b(?:founder|ceo|cto|coo|cfo|head of [a-z]+|vp [a-z]+|director)\s+([A-Z][\w.&'-]{1,30}(?:\.[a-z]{2,})?)\b/);
-  if (/\bpreviously\b|\bformerly\b|\bex-/i.test(title)) return true;
-  if (!m) return false;
-  const org = m[1].toLowerCase().replace(/[^a-z0-9]/g, "");
-  if (!org || /^(engineering|security|compliance|product|marketing|sales|operations|finance|people|growth|design|data|it|technology|platform|infrastructure)$/.test(org)) return false;
+  if (/\bpreviously\b|\bformerly\b|\bex-|\bsubsidiary\b/i.test(title)) return true;
   const keys = companyKeys.map((k) => k.toLowerCase().replace(/[^a-z0-9]/g, "")).filter((k) => k.length >= 3);
-  return !keys.some((k) => org.includes(k) || k.includes(org));
+  const isUs = (org: string) => {
+    const o = org.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return !!o && keys.some((k) => o.includes(k) || k.includes(o));
+  };
+  const GENERIC = /^(engineering|security|compliance|product|marketing|sales|operations|finance|people|growth|design|data|it|technology|platform|infrastructure|customer success|revenue|research)$/i;
+  // Any web domain in the title ("CEO, 5paisa.com") names the employer.
+  for (const d of title.match(/[a-z0-9-]+\.(com|io|ai|co|in|app|dev|net|org)/gi) ?? []) if (!isUs(d.split(".")[0])) return true;
+  // "Title at Org", "Title @ Org", "Title, Org", "Title | Org", "Title of Org" (ignore trailing parentheticals).
+  const t = title.replace(/\([^)]*\)/g, "").trim();
+  const m = t.match(/(?:\bat\b|@|,|\||–|—|\bof\b)\s*([A-Z0-9][\w.&' -]{1,40})$/) ?? t.match(/\b(?:founder|ceo|cto|coo|cfo|head of [a-z]+|vp [a-z]+|director)\s+([A-Z][\w.&'-]{1,30}(?:\.[a-z]{2,})?)\b/);
+  if (!m) return false;
+  const org = m[1].trim();
+  if (GENERIC.test(org) || /^(co-?founder|founder|ceo|cto|coo|cfo|president|board chair(man)?|chairman)$/i.test(org)) return false;
+  return !isUs(org);
 }
 
 /** Find (name, title) pairs in short page lines and sentences. */

@@ -25,7 +25,7 @@ export default function HistoryPage() {
             <tbody>
               {runs?.map((r) => (
                 <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50">
-                  <td className="px-5 py-2"><Link className="mono text-brand-700 hover:underline" href={`/history/${r.id}`}>{r.results.map((s) => s.domain).join(", ")}</Link></td>
+                  <td className="px-5 py-2"><Link className="mono text-brand-700 hover:underline" href={`/history/${r.id}`} title={r.results.map((s) => s.domain).join(", ")}>{r.results.slice(0, 3).map((s) => s.domain).join(", ")}{r.results.length > 3 ? ` +${r.results.length - 3} more` : ""}</Link></td>
                   <td className="px-5 py-2">{r.results.filter((s) => s.qualification === "qualified").length}</td>
                   <td className="px-5 py-2">{r.results.filter((s) => s.qualification === "manual_review").length}</td>
                   <td className="px-5 py-2">{r.results.filter((s) => s.emailStatus === "sent").length}</td>

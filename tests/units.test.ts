@@ -152,9 +152,32 @@ describe("contact discovery from the website", () => {
     expect(ranked.map((r) => r.name)).toEqual(["Priya Raman", "Ana Ortiz"]);
     expect(ranked[0].selectionReason).toMatch(/CTO/);
   });
+  it("rejects testimonial titles that name another employer in any form", async () => {
+    const { worksElsewhere } = await import("@/lib/contacts/select");
+    const keys = ["zoho"];
+    expect(worksElsewhere("CEO, 5paisa.com (an IIFL subsidiary)", keys)).toBe(true);
+    expect(worksElsewhere("Head of IT at Globex", keys)).toBe(true);
+    expect(worksElsewhere("CTO @ Initech", keys)).toBe(true);
+    expect(worksElsewhere("Founder, Acme Corp", keys)).toBe(true);
+    expect(worksElsewhere("Co-founder & CTO", keys)).toBe(false);
+    expect(worksElsewhere("Co-CEO & Board Chairman", keys)).toBe(false);
+    expect(worksElsewhere("VP Engineering at Zoho", keys)).toBe(false);
+    expect(worksElsewhere("Head of Security, Zoho Corporation", keys)).toBe(false);
+  });
   it("finds founders named in prose", () => {
     const people = extractPeople(["Acme was founded by Jane Doe and John Roe in 2021 to fix payroll."], "https://acme.com/about", ["acme"]);
     expect(people.map((p) => p.name)).toEqual(["Jane Doe", "John Roe"]);
+  });
+});
+
+describe("email openers", () => {
+  it("turns every enterprise signal label into a grammatical sentence", async () => {
+    const { enterpriseHook } = await import("@/lib/outreach/email");
+    for (const label of ["Enterprise plan / tier", "SSO / SAML for enterprise customers", "Sales-led custom pricing", "Enterprise features (audit logs, SLA, dedicated manager)", "Sells to large enterprises"]) {
+      const s = enterpriseHook("Acme", label);
+      expect(s).toMatch(/^I noticed Acme/);
+      expect(s).not.toMatch(/offers sells|offers enterprise plan \//i);
+    }
   });
 });
 
@@ -187,6 +210,14 @@ describe("rule-based extraction", () => {
     expect(f.funding_quote).toMatch(/Series B/);
     expect(f.enterprise_signals.map((e) => e.signal)).toContain("Enterprise plan / tier");
     expect(f.compliance_signals.map((e) => e.signal)).toContain("GDPR obligations mentioned");
+  });
+  it("never counts advice to the reader as a certification held", () => {
+    expect(extractPageFacts({ content: "Title: Pay\nTo accept card payments, your company must always be PCI DSS compliant.", pageType: "security" }).certifications_held).toEqual([]);
+  });
+  it("takes only section roots from a sitemap", async () => {
+    const { sitemapCandidates } = await import("@/lib/scraper/links");
+    const urls = ["https://x.com/trust/slavery-statement", "https://x.com/trust", "https://x.com/careers/backend-engineer", "https://x.com/company/careers", "https://x.com/pricing"];
+    expect(sitemapCandidates(urls, "x.com", []).map((c) => c.url).sort()).toEqual(["https://x.com/company/careers", "https://x.com/pricing", "https://x.com/trust"]);
   });
   it("never counts a certification that is planned or in progress as held", () => {
     for (const line of ["We are working towards SOC 2 Type II certification.", "Our SOC 2 audit is in progress and we expect to be certified in Q3.", "We plan to achieve ISO 27001 certification next year."]) {
@@ -247,5 +278,32 @@ describe("page classification", () => {
     };
     const wrong = Object.entries(cases).filter(([p, want]) => classifyPage(`https://x.com${p}`) !== want).map(([p, want]) => `${p}: got ${classifyPage(`https://x.com${p}`)}, want ${want}`);
     expect(wrong).toEqual([]);
+  });
+});
+
+describe("API input formats (for automated test scripts)", () => {
+  it("accepts every reasonable request shape", async () => {
+    const { normalizeResearchRequest: n } = await import("@/lib/api-format");
+    expect(n({ domains: "a.com\nb.io" })).toEqual(["a.com\nb.io"]);
+    expect(n({ domains: ["a.com", "b.io"] })).toEqual(["a.com", "b.io"]);
+    expect(n({ domain: "a.com" })).toEqual(["a.com"]);
+    expect(n({ url: "https://www.a.com" })).toEqual(["https://www.a.com"]);
+    expect(n({ urls: ["a.com"] })).toEqual(["a.com"]);
+    expect(n({ websites: "a.com, b.io" })).toEqual(["a.com, b.io"]);
+    expect(n({ companies: ["a.com"] })).toEqual(["a.com"]);
+    expect(n({ input: "a.com" })).toEqual(["a.com"]);
+    expect(n(["a.com", "b.io"])).toEqual(["a.com", "b.io"]);
+    expect(n("a.com")).toEqual(["a.com"]);
+    expect(n([{ domain: "a.com", contact_name: "Jane Doe", contact_title: "CTO" }])).toEqual(["a.com | Jane Doe | CTO"]);
+    expect(n({ companies: [{ website: "a.com", poc: { name: "Jane Doe", title: "CTO" } }] })).toEqual(["a.com | Jane Doe | CTO"]);
+    expect(n({ domain: "a.com", contact_name: "Jane Doe", title: "Head of Security" })).toEqual(["a.com | Jane Doe | Head of Security"]);
+    expect(n({ data: { domains: ["a.com"] } })).toEqual(["a.com"]);
+  });
+  it("returns null when nothing usable is present", async () => {
+    const { normalizeResearchRequest: n } = await import("@/lib/api-format");
+    expect(n({ hello: "world" })).toBeNull();
+    expect(n(42)).toBeNull();
+    expect(n(null)).toBeNull();
+    expect(n([1, 2])).toBeNull();
   });
 });

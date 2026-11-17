@@ -89,7 +89,7 @@ export function ResearchApp() {
     const latest: Record<string, ResearchState> = {};
     let rej: Rejected = [];
     try {
-      const res = await fetch("/api/research", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ domains: input }) });
+      const res = await fetch("/api/research", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" }, body: JSON.stringify({ domains: input }) });
       if (!res.ok || !res.body) {
         const json = await res.json().catch(() => ({}));
         setError({ message: json.error ?? `Request failed (HTTP ${res.status})`, rejected: json.details?.rejected });
@@ -153,8 +153,8 @@ export function ResearchApp() {
   return (
     <div className="space-y-10">
       {/* Hero + input */}
-      <section className="grid items-start gap-8 lg:grid-cols-[1fr_1.15fr]">
-        <div className="pt-2">
+      <section className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        <div className="min-w-0 pt-2">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-white/70 px-3 py-1 text-xs font-medium text-brand-700 shadow-sm">
             <Sparkles className="h-3.5 w-3.5" /> Prospect research for Sprinto
           </span>
@@ -273,8 +273,8 @@ export function ResearchApp() {
             <CompanyList companies={companies} onRerun={busy ? undefined : (line) => { setText(line); run(line); }} />
           </>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-            <div>
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+            <div className="min-w-0">
               <h2 className="text-xl font-semibold tracking-tight text-slate-900">How it works</h2>
               <ol className="mt-4 grid gap-3 sm:grid-cols-2">
                 {STEPS.map((s, i) => (
@@ -306,7 +306,7 @@ function SummaryPill({ n, label, cls, icon }: { n: number; label: string; cls: s
 
 function RecentRuns({ runs, compact }: { runs: StoredRun[]; compact?: boolean }) {
   return (
-    <div>
+    <div className="min-w-0">
       <div className="flex items-center justify-between">
         <h2 className={cn("font-semibold tracking-tight text-slate-900", compact ? "text-base" : "text-xl")}>Recent research</h2>
         <Link href="/history" className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700">View all <ArrowRight className="h-3 w-3" /></Link>
@@ -321,12 +321,14 @@ function RecentRuns({ runs, compact }: { runs: StoredRun[]; compact?: boolean })
           const q = r.results.filter((s) => s.qualification === "qualified").length;
           const sent = r.results.filter((s) => s.emailStatus === "sent").length;
           return (
-            <Link key={r.id} href={`/history/${r.id}`} className="group flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3 shadow-[var(--shadow-card)] transition hover:-translate-y-px hover:border-brand-200 hover:shadow-[var(--shadow-lift)]">
+            <Link key={r.id} href={`/history/${r.id}`} className="group flex min-w-0 items-center gap-3 overflow-hidden rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3 shadow-[var(--shadow-card)] transition hover:-translate-y-px hover:border-brand-200 hover:shadow-[var(--shadow-lift)]">
               <div className="flex -space-x-2">
                 {r.results.slice(0, 3).map((s) => <span key={s.id} className="rounded-xl ring-2 ring-white"><CompanyAvatar name={s.companyName ?? s.domain} domain={s.domain} size="sm" /></span>)}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="mono truncate text-[13px] text-slate-800">{r.results.map((s) => s.domain).join(", ")}</div>
+                <div className="mono truncate text-[13px] text-slate-800" title={r.results.map((s) => s.domain).join(", ")}>
+                  {r.results.slice(0, 3).map((s) => s.domain).join(", ")}{r.results.length > 3 ? ` +${r.results.length - 3} more` : ""}
+                </div>
                 <div className="mt-0.5 text-xs text-slate-500">{q} qualified · {sent} emailed · {timeAgo(r.createdAt)}</div>
               </div>
               <ArrowRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-brand-500" />

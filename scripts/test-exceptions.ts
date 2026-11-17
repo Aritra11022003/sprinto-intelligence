@@ -11,9 +11,9 @@ const research = (domains: unknown) => json({ domains });
 
 const cases: Case[] = [
   // ── /api/research: malformed requests ──
-  { name: "empty body", path: "/api/research", body: "", expect: 400 },
+  { name: "empty body", path: "/api/research", body: "", expect: 400, check: (j) => (/empty/i.test(j.error) ? null : "should say the body is empty") },
   { name: "invalid JSON", path: "/api/research", body: "{not json", expect: 400, check: (j) => (/valid JSON/.test(j.error) ? null : "message should mention JSON") },
-  { name: "missing domains field", path: "/api/research", body: json({ urls: ["a.com"] }), expect: 400 },
+  { name: "plain text with no domain", path: "/api/research", body: "hello there", headers: { "Content-Type": "text/plain" }, expect: 400 },
   { name: "domains is a number", path: "/api/research", body: json({ domains: 42 }), expect: 400 },
   { name: "domains is null", path: "/api/research", body: json({ domains: null }), expect: 400 },
   { name: "empty string", path: "/api/research", body: research(""), expect: 400, check: (j) => (/at least one/i.test(j.error) ? null : "should ask for a domain") },
@@ -21,7 +21,9 @@ const cases: Case[] = [
   { name: "empty array", path: "/api/research", body: research([]), expect: 400 },
   { name: "array of non-strings", path: "/api/research", body: research([1, 2, 3]), expect: 400 },
   { name: "oversized body (>100KB)", path: "/api/research", body: research("a.com\n".repeat(30_000)), expect: [400, 413] },
-  { name: "wrong method GET", path: "/api/research", method: "GET", expect: 405 },
+  { name: "GET without a domain", path: "/api/research", method: "GET", expect: 400 },
+  { name: "wrong method PUT", path: "/api/research", method: "PUT", body: research("a.com"), expect: 405 },
+  { name: "unrelated JSON keys", path: "/api/research", body: json({ hello: "world" }), expect: 400, check: (j) => (/No company domains/.test(j.error) ? null : "should explain the expected format") },
 
   // ── /api/research: every entry invalid → 400 with per-entry reasons ──
   { name: "plain garbage", path: "/api/research", body: research("hello world\n!!!\n???"), expect: 400, check: (j) => (j.details?.rejected?.length >= 1 ? null : "should list rejected entries") },

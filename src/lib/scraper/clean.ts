@@ -27,6 +27,10 @@ export interface CleanedPage {
   blocks: number;
   /** Certification badges / strings found in the footer or image alt text (removed from main text). */
   footerSignals: string[];
+  /** Names/descriptions from the page's own JSON-LD structured data (often the only text on JS-rendered pages). */
+  structuredData: string[];
+  /** Words available from title, meta description and structured data (used when the body is empty). */
+  metaWordCount: number;
   /** Heuristic: the HTML looks like a JavaScript app shell with little server-rendered text. */
   looksJsRendered: boolean;
   /** Short blocks (names, job titles) in page order, kept for people / open-role extraction. */
@@ -121,6 +125,31 @@ function collectBlocks($: cheerio.CheerioAPI, root: AnyNode): Block[] {
   return out;
 }
 
+/** Collect human-readable names/descriptions from JSON-LD blocks (the site's own published summary). */
+export function extractStructuredData($: cheerio.CheerioAPI): string[] {
+  const out: string[] = [];
+  const visit = (node: unknown, depth: number) => {
+    if (depth > 6 || out.length >= 20 || node === null || typeof node !== "object") return;
+    if (Array.isArray(node)) return node.forEach((n) => visit(n, depth + 1));
+    const o = node as Record<string, unknown>;
+    const type = String(o["@type"] ?? "");
+    if (/^(BreadcrumbList|ListItem|ImageObject|SearchAction|EntryPoint|ReadAction)$/.test(type)) return;
+    const name = typeof o.name === "string" ? o.name : typeof o.headline === "string" ? o.headline : "";
+    const desc = typeof o.description === "string" ? o.description : "";
+    const line = normalizeWhitespace([name, desc].filter(Boolean).join(": "));
+    if (line && line.split(" ").length >= 3 && line.length <= 600) out.push(line);
+    for (const v of Object.values(o)) if (typeof v === "object") visit(v, depth + 1);
+  };
+  $('script[type="application/ld+json"]').each((_, el) => {
+    try {
+      visit(JSON.parse($(el).text()), 0);
+    } catch {
+      /* invalid JSON-LD is ignored */
+    }
+  });
+  return deduplicateText(out).slice(0, 12);
+}
+
 /** Remove boilerplate elements in place. Returns certification signals found in removed footers. */
 export function cleanHtml($: cheerio.CheerioAPI): { footerSignals: string[] } {
   const footerSignals: string[] = [];
@@ -169,6 +198,7 @@ export function extractMainContent(html: string, maxChars = 6000): CleanedPage {
   const rawScriptCount = $("script").length;
   const appShell = $("#root, #__next, #app, [data-reactroot], #__nuxt, app-root").length > 0;
 
+  const structuredData = extractStructuredData($);
   const { footerSignals } = cleanHtml($);
   const mainEl = $("main").first();
   const bodyEl = $("body").first();
@@ -212,7 +242,7 @@ export function extractMainContent(html: string, maxChars = 6000): CleanedPage {
     return s;
   };
   const header = [title && `Title: ${title}`, metaDescription && `Description: ${metaDescription}`].filter(Boolean).join("\n");
-  const footer = footerSignals.length ? `\n[Footer & badges]\n${footerSignals.join("\n")}` : "";
+  const footer = (footerSignals.length ? `\n[Footer & badges]\n${footerSignals.join("\n")}` : "") + (structuredData.length ? `\n[Structured data]\n${structuredData.map((d) => `Structured data: ${d}`).join("\n")}` : "");
   let budget = maxChars - header.length - footer.length - 10;
   const chosen: Block[] = [];
   for (const b of [...unique].sort((a, b2) => score(b2) - score(a))) {
@@ -234,6 +264,8 @@ export function extractMainContent(html: string, maxChars = 6000): CleanedPage {
     blocks: chosen.length,
     footerSignals,
     looksJsRendered: totalWords < 80 && (appShell || rawScriptCount >= 5),
+    structuredData,
+    metaWordCount: words([title, metaDescription, ...structuredData].join(" ")),
     shortLines,
   };
 }

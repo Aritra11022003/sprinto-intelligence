@@ -68,14 +68,21 @@ export function detectCertificationClaims(content: string, pageType: PageType): 
   });
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    // Questions ("Does your company comply with PCI DSS?") are questionnaires, never claims.
+    if (/\?\s*$/.test(line) || /^(\w+:\s*)?(does|do|is|are|has|have|can|will|how|what|why|which|should)\b/i.test(line.trim())) continue;
     const lineCert = line.match(CERT_RE);
     if (lineCert && notHeld.has(normalizeCertName(lineCert[0]))) continue;
     const isBadge = /^(Badge|Footer):/.test(line);
     if (!(pageType === "security" || isBadge)) continue;
     // Compliance vendors market certifications they help customers get: not a certification held.
-    if (/\b(help(s|ing)? (you|teams|companies)|get (you )?(soc|iso|certified|compliant)|become (soc|iso|compliant)|automate|your (soc|iso|audit)|in weeks|in days)\b/i.test(line)) continue;
+    if (/\b(your (company|business|organi[sz]ation|team|soc|iso|audit)|you (must|need|should|can)|help(s|ing)? (you|teams|companies)|get (you )?(soc|iso|certified|compliant)|become (soc|iso|compliant)|automate|in weeks|in days)\b/i.test(line)) continue;
     // On a trust/security page, a short line that is just a certification name ("SOC 2 Type II") is a held certification.
-    const bareOnTrustPage = pageType === "security" && line.split(/\s+/).length <= 8 && CERT_RE.test(line) && !/\b(in progress|underway|coming soon|pursuing|working towards|planned|roadmap|what is|guide|learn)\b/i.test(line);
+    const notListing = (t: string) => !/\b(in progress|underway|coming soon|pursuing|working towards|planned|roadmap|what is|guide|learn)\b/i.test(t);
+    const isBareName = (t: string) => t.trim().split(/\s+/).length <= 8 && CERT_RE.test(t) && notListing(t);
+    // On a security page, the page title and its own structured data often list certifications as terms
+    // ("Security & Compliance at Acme | SOC 2, PCI DSS" / "SOC 2 Type II: Service Organization Control…").
+    const listedInMeta = pageType === "security" && /^(Title|Structured data):/.test(line) && line.replace(/^(Title|Structured data):\s*/, "").split(/\s[|—–]\s|:\s/).some(isBareName);
+    const bareOnTrustPage = (pageType === "security" && isBareName(line)) || listedInMeta;
     const m = line.match(STRONG_CERT_CLAIM) ?? (isBadge && /^Badge:/.test(line) ? line.match(CERT_RE) : null) ?? (bareOnTrustPage ? line.match(CERT_RE) : null);
     if (!m) continue;
     const name = normalizeCertName(line.match(CERT_RE)?.[0] ?? "");

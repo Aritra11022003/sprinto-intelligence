@@ -92,11 +92,63 @@ Browser (Next.js page) ──POST /api/research──▶ Vercel function (stream
 
 ## API
 
+Built to be easy for automated test scripts: lenient input, one plain JSON response by default.
+
+### `POST /api/research`
+
+Any of these bodies work (up to 10 companies per request):
+
+```jsonc
+{ "domains": ["acme.com", "beta.io"] }
+{ "domains": "acme.com\nbeta.io | Jane Doe | CTO" }      // optional contact per line
+{ "domain": "acme.com" }
+{ "urls": ["https://www.acme.com"] }                      // also: websites, companies, input
+[ "acme.com", "beta.io" ]
+[ { "domain": "acme.com", "contact_name": "Jane Doe", "contact_title": "CTO" } ]
+```
+
+A `text/plain` body (one domain per line), a form post (`domain=acme.com`), or `GET /api/research?domain=acme.com` also work.
+
+**Response** (`200`):
+
+```jsonc
+{
+  "ok": true, "count": 2, "duration_ms": 4210,
+  "counts": { "qualified": 1, "manual_review": 0, "disqualified": 1, "incomplete": 0, "emails_sent": 1 },
+  "rejected": [ { "input": "not a domain", "reason": "Not a valid public domain…" } ],
+  "results": [{
+    "domain": "acme.com", "company_name": "Acme", "status": "completed",
+    "qualification": "qualified",              // qualified | disqualified | manual_review | incomplete
+    "qualified": true,
+    "reasons": [ { "gate": "stage", "result": "pass", "explanation": "…", "evidence": [ { "quote": "…", "source_url": "…" } ] } ],
+    "certification": { "status": "not_found", "named": [] },
+    "contact": { "name": "Jane Doe", "title": "CTO", "source": "website", "source_url": "…", "why": "…" },
+    "pain_points": [ { "hypothesis": "…", "evidence": "…", "source_urls": ["…"], "why_it_matters": "…", "confidence": 0.75, "angle": "…" } ],
+    "email": { "addressed_to": "Jane Doe", "subject": "…", "body": "Hi Jane, …", "status": "sent", "sent": true },
+    "pages_fetched": [ { "hit": 1, "url": "https://acme.com/", "type": "homepage", "status": "ok", "why": "…" } ],
+    "page_hits": 2, "evidence": [ … ], "stop_reason": "…", "errors": [], "duration_ms": 1830
+  }]
+}
+```
+
+**Errors** always return JSON `{ "ok": false, "error": "…", "details"?: { "rejected": [...] } }` with `400` (empty, malformed or no valid domain), `413` (body over 100 KB), `405` (wrong method) or `429` (more than 20 research requests a minute). An unreachable, blocked or JavaScript-only website is **not** an error: it comes back as a result with `qualification: "incomplete"` and a `stop_reason`.
+
+Add `?full=1` to include the complete internal state (audit log included). Add `?stream=1` (or `Accept: application/x-ndjson`) for live NDJSON progress, which is what the dashboard uses.
+
+### Other routes
+
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| POST | `/api/research` | `{ "domains": "a.com\nb.io \| Jane Doe \| CTO" }` or an array of lines | Streamed NDJSON: `start` → `update`… → `done` with full results · `400` invalid input · `429` rate limit |
-| POST | `/api/email/send-to-self` | `{ "subject", "body", "researchId" }` | `{ status: "sent" }` · `403` if `to` ≠ you · `503` Gmail not configured |
-| GET | `/api/health` | — | Email configured?, which provider, masked inbox |
+| POST | `/api/email/send-to-self` | `{ "subject", "body", "researchId" }` | `{ status: "sent" }` · `403` if `to` ≠ you · `503` email not configured |
+| GET | `/api/health` | — | email configured?, provider, masked inbox |
+
+## Testing
+
+```bash
+npm test                                                  # 70 unit + integration tests (fake websites, no network)
+npx tsx scripts/test-exceptions.ts https://<your-app>     # 36 invalid/edge-case API inputs: expected status + JSON error, never a crash
+npx tsx scripts/test-run.ts https://<your-app> "a.com\nb.io"   # real run, audits every result (5-hit rule, evidence, gates, email rules, links)
+```
 
 ## Local development
 
@@ -104,7 +156,6 @@ Browser (Next.js page) ──POST /api/research──▶ Vercel function (stream
 npm install
 cp .env.example .env.local    # optional: add Gmail (or Resend) to actually send
 npm run dev                   # http://localhost:3000
-npm test                      # 54 unit + integration tests (fake websites, no network)
 npm run typecheck
 npx tsx scripts/run.ts linear.app twenty.com   # run the agent from the terminal
 ```

@@ -158,6 +158,41 @@ describe("ICP fit beyond the gates", () => {
     expect(out.namedCertifications).toEqual(["SOC 2"]);
   });
 
+  it("tries a second trust page when the first security page is unreadable", async () => {
+    const home = page("Flowlane | Workflow automation for finance teams", `<h1>Workflow automation software for finance teams</h1><p>Flowlane is a cloud platform that helps finance teams at mid-market companies automate approvals and close the books faster.</p><a href="/trust">Trust center</a>`);
+    const jsOnly = "<html><head><title>Security</title></head><body><div id='root'></div></body></html>";
+    const trust = page("Trust | Flowlane", `<h1>Trust</h1><p>Flowlane is SOC 2 Type II certified and audited annually by an independent firm.</p><p>We encrypt customer data at rest and in transit, run regular penetration tests and publish our subprocessors.</p>`);
+    const { deps, state } = setup({ domain: DOMAIN, pages: { ...QUALIFIED_SITE, "/": home, "/security": jsOnly, "/trust": trust } });
+    const out = await runCompanyResearch(state, deps);
+    expect(out.pages.filter((p) => p.pageType === "security").map((p) => p.fetchStatus)).toEqual(["empty", "ok"]);
+    expect(out.qualification).toBe("disqualified");
+  });
+
+  it("never treats legal pages under /trust as the security page", async () => {
+    const { discoverLinks } = await import("@/lib/scraper/links");
+    const links = discoverLinks(`<a href="/trust/terms-and-conditions">Terms of Use</a><a href="/trust/privacy-notice">Privacy Notice</a><a href="/privacy-policy">Privacy</a><a href="/cookie-policy">Cookies</a><a href="/trust">Trust</a>`, "https://x.com/", "x.com");
+    expect(links.map((l) => l.url)).toEqual(["https://x.com/trust"]);
+  });
+
+  it("reads certifications from a JavaScript page's own structured data (JSON-LD)", async () => {
+    const ld = JSON.stringify({ "@context": "https://schema.org", "@graph": [
+      { "@type": "WebPage", name: "Security & Compliance at Flowlane", description: "Flowlane's security and compliance posture across products and regions." },
+      { "@type": "DefinedTerm", name: "SOC 2 Type II", description: "Service Organization Control 2 Type II certification confirms Flowlane's security controls are audited annually." },
+    ] });
+    const jsSecurity = `<html><head><title>Security | Flowlane</title><script type="application/ld+json">${ld}</script></head><body><div id="root"></div></body></html>`;
+    const { deps, state } = setup({ domain: DOMAIN, pages: { ...QUALIFIED_SITE, "/security": jsSecurity } });
+    const out = await runCompanyResearch(state, deps);
+    expect(out.qualification).toBe("disqualified");
+    expect(out.evidence.find((e) => e.field === "certification")?.supportingQuote).toMatch(/SOC 2 Type II/);
+  });
+
+  it("never counts a questionnaire question as a certification", async () => {
+    const q = page("PCI SAQ | Flowlane", `<h1>PCI questionnaire</h1><p>Does your company perform due diligence to evaluate new service providers such that you only engage PCI DSS compliant vendors?</p><p>Is your organisation ISO 27001 certified?</p>`);
+    const { deps, state } = setup({ domain: DOMAIN, pages: { ...QUALIFIED_SITE, "/security": q } });
+    const out = await runCompanyResearch(state, deps);
+    expect(out.namedCertifications).toEqual([]);
+  });
+
   it("does not count a certification that is only 'in progress'", async () => {
     const trust = page("Security | Flowlane", `<h1>Security</h1><p>We take security seriously and encrypt all customer data at rest and in transit across our platform.</p><div>SOC 2 Type II: in progress</div>`);
     const { deps, state } = setup({ domain: DOMAIN, pages: { ...QUALIFIED_SITE, "/security": trust } });

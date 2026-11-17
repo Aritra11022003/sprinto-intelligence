@@ -34,7 +34,7 @@ import { isSameSite } from "@/lib/security/domain";
 import { MAX_HITS, type FetchStatus, type PageRecord, type PageType, type ResearchState, type StageKey } from "@/lib/types";
 import { extractCompanyFacts } from "./evidence";
 import { HitBudgetError, reserveHit } from "./hit-budget";
-import { needsContact, selectNextSource } from "./source-selection";
+import { fieldLimit, needsContact, selectNextSource } from "./source-selection";
 
 /** og:site_name, else the title segment containing the domain name, else the domain name itself. */
 export function companyNameFrom(siteName: string | null, title: string, domain: string): string {
@@ -155,7 +155,9 @@ export function buildResearchGraph(deps: AgentDeps) {
       words = quick.wordCount;
       if (detectCaptcha(r.html, words)) status = "captcha";
       else if (detectLoginWall(r.finalUrl, r.html, words)) status = "login_required";
-      else if (words < 20) status = "empty"; // JS-only shell or blank page: nothing to read
+      // JS-only shell or blank page: nothing to read, unless the page publishes its content as metadata / structured data.
+      else if (words < 20 && quick.metaWordCount < 15) status = "empty";
+      else if (words < 20) s = log(s, "fetch_page", "metadata_only", { url: target, metaWords: quick.metaWordCount });
     }
     const page: PageRecord = {
       url: canonical, pageType, hitNumber, fetchStatus: status, httpStatus: r.httpStatus, selectionReason: reason,
@@ -258,7 +260,7 @@ export function buildResearchGraph(deps: AgentDeps) {
     if (short) return { research: log({ ...s, stopReason: short, missingFields: [] }, "validate_required_fields", "short_circuit", { reason: short }), next: "qualify_company" };
     // Certification asked as far as it is worth (1 page) -> not_found, uncertainty preserved.
     if (s.certificationStatus === "unknown") {
-      const tried = (s.fieldAttempts["certification_status"] ?? 0) >= 1;
+      const tried = (s.fieldAttempts["certification_status"] ?? 0) >= fieldLimit(s, "certification_status");
       const noCandidate = !s.candidateLinks.some((c) => c.pageType === "security" && !s.visitedUrls.includes(c.url));
       if (s.pages.some((p) => p.pageType === "homepage" && p.fetchStatus === "ok") && (tried || noCandidate)) s = { ...s, certificationStatus: "not_found" };
     }

@@ -78,7 +78,7 @@ async function checkLinks(urls: string[]): Promise<string[]> {
 async function main() {
   console.log(`Run test against ${BASE}\nInput:\n  ${INPUT.split("\n").join("\n  ")}\n`);
   const t0 = Date.now();
-  const res = await fetch(`${BASE}/api/research`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ domains: INPUT }) });
+  const res = await fetch(`${BASE}/api/research?stream=1`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ domains: INPUT }) });
   if (!res.ok || !res.body) {
     console.log(`HTTP ${res.status}: ${await res.text()}`);
     process.exit(1);

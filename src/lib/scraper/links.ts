@@ -18,7 +18,7 @@ export const GUESSED_PATHS: Record<Exclude<PageType, "homepage" | "other">, stri
   product: ["/product"],
 };
 
-const SKIP_PATH = /\.(pdf|png|jpe?g|gif|svg|webp|zip|mp4|mov|xml|json|css|js)$|\/(blog|news|events?|webinars?|docs?|help|support|legal|terms|cookie|login|log-in|signin|sign-in|signup|sign-up|register|demo|contact|status|cdn-cgi|wp-admin|feed|tag|category|author)(\/|$)/i;
+const SKIP_PATH = /\.(pdf|png|jpe?g|gif|svg|webp|zip|mp4|mov|xml|json|css|js)$|\/(blog|news|events?|webinars?|docs?|help|support|legal|legal-[a-z-]+|terms(-[a-z-]+)?|tos|privacy(-[a-z-]+)?|cookies?(-[a-z-]+)?|dpa|subprocessors|acceptable-use|imprint|disclaimer|login|log-in|signin|sign-in|signup|sign-up|register|demo|contact|status|cdn-cgi|wp-admin|feed|tag|category|author)(\/|$)/i;
 
 export function canonicalizeUrl(raw: string): string | null {
   try {
@@ -109,6 +109,8 @@ export function sitemapCandidates(urls: string[], siteDomain: string, existing: 
     if (/^\/[a-z]{2}(-[a-z]{2})?\//i.test(u.pathname) && depth > 1) continue;
     const pageType = classifyPage(url);
     if (pageType === "other" || pageType === "homepage") continue;
+    // Only section roots ("/trust", "/company/careers"), never sub-pages ("/trust/slavery-statement", "/careers/a-job").
+    if (classifyPage(`${u.origin}/${u.pathname.split("/").filter(Boolean).pop()}`) !== pageType) continue;
     if (!out.has(url)) out.set(url, { url, pageType, anchorText: "", source: "sitemap", score: 80 - depth * 10 });
   }
   return [...out.values()];

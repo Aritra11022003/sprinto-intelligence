@@ -49,7 +49,7 @@ export interface QualificationResult {
 
 export function qualifyCompany(s: ResearchState): QualificationResult {
   const reasons: QualificationReason[] = [];
-  const hasContent = s.pages.some((p) => p.fetchStatus === "ok" && p.wordCount >= 20);
+  const hasContent = s.pages.some((p) => p.fetchStatus === "ok"); // "ok" already means readable text or structured data
 
   // No usable content: never manufacture a result from nothing.
   if (!hasContent) {

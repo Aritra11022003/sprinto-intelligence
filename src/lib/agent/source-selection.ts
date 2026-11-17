@@ -53,9 +53,20 @@ export function needsContact(state: ResearchState): boolean {
   return !state.contact && state.isSaas === true && state.isB2B === true && state.namedCertifications.length === 0 && (state.fieldAttempts["contact"] ?? 0) < FIELD_FETCH_LIMIT.contact;
 }
 
+/**
+ * Fetch budget for a field. Certification gets a second try only when the first security page
+ * had no readable content (JavaScript-only, 404, blocked): an unread page proves nothing.
+ */
+export function fieldLimit(state: ResearchState, field: ResearchField): number {
+  if (field !== "certification_status") return FIELD_FETCH_LIMIT[field];
+  const read = state.pages.some((p) => p.pageType === "security" && p.fetchStatus === "ok");
+  const failed = state.pages.some((p) => p.pageType === "security" && p.fetchStatus !== "ok");
+  return !read && failed ? 2 : 1;
+}
+
 /** Missing ICP fields that still have fetch budget left. */
 function openFields(state: ResearchState): RequiredField[] {
-  return missingRequiredFields(state).filter((f) => (state.fieldAttempts[f] ?? 0) < FIELD_FETCH_LIMIT[f]);
+  return missingRequiredFields(state).filter((f) => (state.fieldAttempts[f] ?? 0) < fieldLimit(state, f));
 }
 
 export function selectNextSource(state: ResearchState): SourceSelection | null {
@@ -64,7 +75,7 @@ export function selectNextSource(state: ResearchState): SourceSelection | null {
   // ICP facts first; then (budget permitting) a team page for a named contact.
   const fields: ResearchField[] = [...openFields(state), ...(needsContact(state) ? (["contact"] as const) : [])];
   for (const field of fields) {
-    if ((state.fieldAttempts[field] ?? 0) >= FIELD_FETCH_LIMIT[field]) continue;
+    if ((state.fieldAttempts[field] ?? 0) >= fieldLimit(state, field)) continue;
     for (const { type, why } of FIELD_SOURCES[field]) {
       // Don't fetch a second page of a type we already read successfully.
       if (state.pages.some((p) => p.pageType === type && p.fetchStatus === "ok")) continue;

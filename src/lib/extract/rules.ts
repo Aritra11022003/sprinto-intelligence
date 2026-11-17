@@ -39,7 +39,7 @@ const SOFTWARE_YES = /\b(software|saas|platform|apis?|sdks?|cloud[- ]based|dashb
 const SOFTWARE_NO = /\b(add to cart|shop now|free shipping|our menu|order online|book a table|our restaurant|law firm|digital agency|creative agency|marketing agency|consulting firm|our clinic|apparel|handmade|real estate agents?|property listings)\b/i;
 const B2B_YES = /\b(teams|businesses|companies|enterprises?|organi[sz]ations|b2b|startups|smbs?|mid-market|workforce|employees|it admins?|developers|engineering teams|sales teams|finance teams|hr teams|security teams|customer success|revops|for (sales|marketing|engineering|finance|hr|it|security|legal|ops|operations|product|support|revenue|recruiting))\b/i;
 const B2C_NO = /\b(for you and your family|your family|for your home|personal use|groceries|your pet|for kids|gamers|for individuals|consumers)\b/i;
-const VENDOR_CERT_LANGUAGE = /\b(help(s|ing)? (you|teams|companies|customers)|get (you )?(soc|iso|certified|compliant)|become (soc|iso|compliant|certified)|achieve (soc|iso)|your (soc|iso|audit)|automate (soc|iso|compliance)|compliance automation|for your customers|in weeks|in days|frameworks? (we )?support)\b/i;
+const VENDOR_CERT_LANGUAGE = /\b(your (company|business|organi[sz]ation|team|customers)|you (must|need|should|can)|help(s|ing)? (you|teams|companies|customers)|get (you )?(soc|iso|certified|compliant)|become (soc|iso|compliant|certified)|achieve (soc|iso)|your (soc|iso|audit)|automate (soc|iso|compliance)|compliance automation|for your customers|in weeks|in days|frameworks? (we )?support)\b/i;
 const SELF_CERT = new RegExp(
   `\\b(we are|we're|we have|we've|is|are|has been|have been|achieved|completed|successfully|maintains?|holds?|proud(ly)?|our)\\b[^.\\n]{0,60}(?:${CERT_RE.source})[^.\\n]{0,40}\\b(certified|compliant|attest\\w*|audit(ed)?|certification|report|accredited)\\b`,
   "i",
@@ -138,6 +138,7 @@ export function extractPageFacts(input: { content: string; pageType: PageType; s
   // Certifications the company itself holds (vendor marketing language excluded).
   for (const s of all) {
     if (!CERT_RE.test(s) || VENDOR_CERT_LANGUAGE.test(s)) continue;
+    if (/\?\s*$/.test(s) || /^(does|do|is|are|has|have|can|will|how|what|why|which|should)\b/i.test(s)) continue; // questions are not claims
     if (/\b(working towards|in progress|underway|planned|pursuing|plan to|will (be|achieve|complete)|expect(ed|s)? to|on track|coming soon|in the process of)\b/i.test(s)) continue;
     if (SELF_CERT.test(s)) {
       const m = s.match(CERT_RE);
