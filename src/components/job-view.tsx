@@ -1,11 +1,11 @@
 "use client";
 import { useState } from "react";
-import { Check, ChevronDown, ChevronRight, CircleDashed, ExternalLink, Loader2, Mail, Minus, RefreshCw, TriangleAlert, X } from "lucide-react";
+import { ChevronDown, ExternalLink, Loader2, Mail, RefreshCw, Send, TriangleAlert, UserRound } from "lucide-react";
 import { buildSelfEmail } from "@/lib/email/compose";
 import { STAGES, type ResearchState } from "@/lib/types";
 import { cn, formatDuration } from "@/lib/utils";
 import { QualificationBadge, StatusBadge } from "./status";
-import { Alert, Badge, Button, CardContent, Card, Input } from "./ui";
+import { Alert, Badge, Button, CardContent, Card, CompanyAvatar, Input } from "./ui";
 
 type Company = ResearchState;
 
@@ -50,20 +50,43 @@ function stepStates(c: Company): Record<string, StepState> {
 
 function StageStepper({ c }: { c: Company }) {
   const states = stepStates(c);
-  const icon = (s: StepState) =>
-    s === "done" ? <Check className="h-3 w-3" /> : s === "active" ? <Loader2 className="h-3 w-3 animate-spin" /> : s === "error" ? <X className="h-3 w-3" /> : s === "skipped" ? <Minus className="h-3 w-3" /> : <CircleDashed className="h-3 w-3" />;
-  const tone = (s: StepState) =>
-    s === "done" ? "bg-emerald-500 text-white" : s === "active" ? "bg-brand-600 text-white" : s === "error" ? "bg-rose-500 text-white" : s === "skipped" ? "bg-slate-200 text-slate-500" : "bg-white text-slate-400 border border-slate-300";
+  const tone = (st: StepState) =>
+    st === "done" ? "bg-emerald-500" : st === "active" ? "bg-brand-500 animate-[var(--animate-pulse-soft)]" : st === "error" ? "bg-rose-400" : st === "skipped" ? "bg-slate-200" : "bg-slate-200/70";
+  const activeIdx = STAGES.findIndex((s) => states[s.key] === "active");
+  const doneN = STAGES.filter((s) => states[s.key] === "done").length;
+  const label = activeIdx >= 0 ? `Step ${activeIdx + 1}/10 · ${STAGES[activeIdx].label}` : isRunning(c) ? "Starting…" : `${doneN} of 10 stages run`;
   return (
-    <ol className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-5 lg:grid-cols-10">
-      {STAGES.map((s, i) => (
-        <li key={s.key} className="flex items-center gap-1.5" title={states[s.key]}>
-          <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full", tone(states[s.key]))}>{icon(states[s.key])}</span>
-          <span className={cn("text-[11px] leading-tight", states[s.key] === "active" ? "font-semibold text-brand-700" : "text-slate-600")}>{i + 1}. {s.label}</span>
-        </li>
-      ))}
-    </ol>
+    <div>
+      <div className="flex gap-1" role="list" aria-label="Research stages">
+        {STAGES.map((s, i) => (
+          <div key={s.key} role="listitem" title={`${i + 1}. ${s.label}: ${states[s.key]}`} className={cn("h-1.5 flex-1 rounded-full transition-colors", tone(states[s.key]))} />
+        ))}
+      </div>
+      <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-500">
+        <span className={cn(activeIdx >= 0 && "font-medium text-brand-700")}>{label}</span>
+        <span className="hidden sm:inline">Fetch → Clean → Extract → Verify → Adapt → Qualify → Contact → Pains → Draft → Send</span>
+      </div>
+    </div>
   );
+}
+
+function HitMeter({ used, max }: { used: number; max: number }) {
+  return (
+    <div className="flex items-center gap-1" title={`${used} of ${max} unique pages fetched`}>
+      {Array.from({ length: max }, (_, i) => (
+        <span key={i} className={cn("h-2 w-2 rounded-full", i < used ? "bg-brand-500" : "bg-slate-200")} />
+      ))}
+    </div>
+  );
+}
+
+function outcomeLine(c: Company): string | null {
+  if (isRunning(c)) return null;
+  if (c.qualification === "disqualified") return c.namedCertifications.length ? `Already certified: ${c.namedCertifications.join(", ")}` : "Not a B2B SaaS business";
+  if (c.qualification === "incomplete") return c.stopReason ?? "No readable content";
+  const who = c.contact ? `${c.contact.name}${c.contact.title ? `, ${c.contact.title}` : ""}` : "no named contact (addressed to the team)";
+  const email = c.emailStatus === "sent" ? "email sent to you" : c.emailBody ? "email drafted" : "no email";
+  return `${who} · ${email}`;
 }
 
 // ── Company card ─────────────────────────────────────────────────────────────
@@ -77,48 +100,60 @@ function CompanyCard({ c, defaultOpen, onRerun }: { c: Company; defaultOpen: boo
   const lastPage = c.pages[c.pages.length - 1];
 
   return (
-    <Card>
-      <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-start justify-between gap-4 px-5 py-4 text-left" aria-expanded={open}>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            {open ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
-            <span className="text-base font-semibold">{c.companyName ?? c.domain}</span>
-            <span className="mono text-xs text-slate-500">{c.domain}</span>
+    <Card className={cn("overflow-hidden transition-shadow", open && "shadow-[var(--shadow-lift)]")}>
+      <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-start gap-3.5 px-5 py-4 text-left transition-colors hover:bg-slate-50/60" aria-expanded={open}>
+        <CompanyAvatar name={c.companyName ?? c.domain} domain={c.domain} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <span className="text-base font-semibold tracking-tight text-slate-900">{c.companyName ?? c.domain}</span>
+            <span className="mono text-xs text-slate-400">{c.domain}</span>
             <QualificationBadge q={c.qualification} />
-            {c.status !== "completed" && <StatusBadge s={c.status} />}
+            {c.status === "escalated" && <StatusBadge s={c.status} />}
+            {c.emailStatus === "sent" && <Badge tone="blue"><Send className="h-3 w-3" /> Emailed</Badge>}
           </div>
-          {c.companyDescription && <p className="mt-1 line-clamp-2 pl-6 text-sm text-slate-600">{c.companyDescription}</p>}
+          {c.companyDescription && <p className="mt-1 line-clamp-1 text-sm text-slate-600">{c.companyDescription}</p>}
+          {outcomeLine(c) && (
+            <p className="mt-1 flex items-center gap-1.5 text-[13px] text-slate-500">
+              {c.contact && <UserRound className="h-3.5 w-3.5 text-slate-400" />}
+              {outcomeLine(c)}
+            </p>
+          )}
         </div>
-        <div className="shrink-0 text-right text-xs text-slate-500">
-          <div className="text-sm font-semibold text-slate-800">{c.hitCount}/{c.maxHits} pages</div>
-          <div>{running ? "running…" : formatDuration(duration(c))}</div>
+        <div className="flex shrink-0 flex-col items-end gap-1.5 text-xs text-slate-500">
+          <HitMeter used={c.hitCount} max={c.maxHits} />
+          <span className="tabular-nums">{c.hitCount}/{c.maxHits} pages · {running ? <span className="text-brand-600">running</span> : formatDuration(duration(c))}</span>
+          <ChevronDown className={cn("h-4 w-4 text-slate-400 transition-transform", open && "rotate-180")} />
         </div>
       </button>
-      <div className="space-y-3 border-t border-slate-100 px-5 py-3">
+      <div className="space-y-3 px-5 pb-4">
         <StageStepper c={c} />
         {running && (c.nextResearchTarget || lastPage) && (
-          <div className="rounded-md bg-brand-50 px-3 py-2 text-xs text-brand-700">
-            <span className="font-semibold">{c.nextResearchTarget ? `Fetching hit ${Math.min(c.hitCount + (c.pages.some((p) => p.url === c.nextResearchTarget) ? 0 : 1), 5)}/5: ` : `Hit ${lastPage!.hitNumber}/5: `}</span>
-            <span className="mono break-all">{c.nextResearchTarget ?? lastPage!.url}</span>
-            <div className="mt-0.5 text-brand-700/80">{c.nextResearchReason ?? lastPage?.selectionReason}</div>
+          <div className="flex items-start gap-2 rounded-xl border border-brand-100 bg-brand-50/70 px-3 py-2 text-xs text-brand-800">
+            <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" />
+            <div className="min-w-0">
+              <span className="font-semibold">{c.nextResearchTarget ? `Fetching page ${Math.min(c.hitCount + (c.pages.some((p) => p.url === c.nextResearchTarget) ? 0 : 1), 5)}/5 ` : `Page ${lastPage!.hitNumber}/5 `}</span>
+              <span className="mono break-all">{c.nextResearchTarget ?? lastPage!.url}</span>
+              <div className="mt-0.5 text-brand-700/80">{c.nextResearchReason ?? lastPage?.selectionReason}</div>
+            </div>
           </div>
         )}
-        {!running && c.stopReason && <div className="text-xs text-slate-500"><span className="font-medium text-slate-700">Stop reason:</span> {c.stopReason}</div>}
         {c.status === "escalated" && (
           <Alert tone="amber" title="Stopped: needs a human">
-            {c.stopReason ?? c.errors[c.errors.length - 1]} {onRerun && <button className="ml-1 underline" onClick={() => onRerun(c.domain)}>Run again</button>}
+            {c.stopReason ?? c.errors[c.errors.length - 1]} {onRerun && <button className="ml-1 font-medium underline underline-offset-2" onClick={() => onRerun(c.domain)}>Run again</button>}
           </Alert>
         )}
       </div>
       {open && (
         <div className="border-t border-slate-100">
-          <div className="flex gap-1 overflow-x-auto border-b border-slate-100 px-3" role="tablist">
-            {TABS.map((t) => (
-              <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cn("whitespace-nowrap border-b-2 px-3 py-2 text-sm", tab === t ? "border-brand-600 font-medium text-brand-700" : "border-transparent text-slate-500 hover:text-slate-800")}>
-                {t}
-                {t === "Evidence" && <span className="ml-1 text-xs text-slate-400">{c.evidence.length}</span>}
-              </button>
-            ))}
+          <div className="overflow-x-auto bg-slate-50/70 px-4 py-2.5">
+            <div className="inline-flex gap-1 rounded-xl bg-slate-200/50 p-1" role="tablist">
+              {TABS.map((t) => (
+                <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cn("whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] font-medium transition", tab === t ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800")}>
+                  {t}
+                  {t === "Evidence" && <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-500">{c.evidence.length}</span>}
+                </button>
+              ))}
+            </div>
           </div>
           <CardContent>
             {tab === "Overview" && <Overview c={c} />}
@@ -210,7 +245,7 @@ function Qualification({ c }: { c: Company }) {
 
 function Quote({ quote, url, label }: { quote: string; url: string; label?: string }) {
   return (
-    <li className="rounded-md border-l-2 border-brand-500 bg-brand-50/40 px-3 py-1.5 text-sm">
+    <li className="rounded-xl border border-slate-200/80 border-l-[3px] border-l-brand-400 bg-white px-3.5 py-2 text-sm shadow-sm">
       {label && <div className="text-xs font-medium text-slate-500">{label}</div>}
       <div className="whitespace-pre-line italic text-slate-800">&ldquo;{quote}&rdquo;</div>
       <a href={url} target="_blank" rel="noopener noreferrer nofollow" className="mono inline-flex items-center gap-1 break-all text-xs text-brand-600 hover:underline">{url} <ExternalLink className="h-3 w-3" /></a>
@@ -328,9 +363,16 @@ function EmailTab({ c }: { c: Company }) {
       </div>
       {c.emailError && !sentNow && <Alert tone="amber"><TriangleAlert className="mr-1 inline h-4 w-4" />{c.emailError}</Alert>}
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
-      <div className="rounded-lg border border-slate-200">
-        <div className="border-b border-slate-100 px-4 py-2 text-sm"><span className="text-slate-400">Subject:</span> <span className="font-medium">{c.emailSubject}</span></div>
-        <pre className="whitespace-pre-wrap px-4 py-3 font-sans text-sm leading-relaxed text-slate-800">{c.emailBody}</pre>
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50 px-4 py-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-rose-300" /><span className="h-2.5 w-2.5 rounded-full bg-amber-300" /><span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
+          <span className="ml-2 text-xs text-slate-400">Draft preview</span>
+        </div>
+        <div className="space-y-1 border-b border-slate-100 px-5 py-3 text-sm">
+          <div className="flex gap-2"><span className="w-14 shrink-0 text-slate-400">To</span><span className="text-slate-700">{c.contact ? c.contact.name : `${c.companyName ?? c.domain} team`} <span className="text-slate-400">(delivered to your inbox only)</span></span></div>
+          <div className="flex gap-2"><span className="w-14 shrink-0 text-slate-400">Subject</span><span className="font-semibold text-slate-900">{c.emailSubject}</span></div>
+        </div>
+        <pre className="whitespace-pre-wrap px-5 py-4 font-sans text-[14px] leading-7 text-slate-800">{c.emailBody}</pre>
       </div>
     </div>
   );

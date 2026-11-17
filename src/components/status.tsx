@@ -1,13 +1,26 @@
 import { Badge } from "./ui";
 
+const Q: Record<string, { tone: "green" | "red" | "amber" | "slate" | "blue"; label: string; dot: string }> = {
+  qualified: { tone: "green", label: "QUALIFIED", dot: "bg-emerald-500" },
+  disqualified: { tone: "red", label: "DISQUALIFIED", dot: "bg-rose-500" },
+  manual_review: { tone: "amber", label: "MANUAL REVIEW", dot: "bg-amber-500" },
+  incomplete: { tone: "slate", label: "INCOMPLETE", dot: "bg-slate-400" },
+};
+
 export function QualificationBadge({ q }: { q: string }) {
-  switch (q) {
-    case "qualified": return <Badge tone="green">QUALIFIED</Badge>;
-    case "disqualified": return <Badge tone="red">DISQUALIFIED</Badge>;
-    case "manual_review": return <Badge tone="amber">MANUAL REVIEW</Badge>;
-    case "incomplete": return <Badge tone="slate">INCOMPLETE</Badge>;
-    default: return <Badge tone="blue">RESEARCHING</Badge>;
+  const v = Q[q];
+  if (!v) {
+    return (
+      <Badge tone="blue">
+        <span className="h-1.5 w-1.5 animate-[var(--animate-pulse-soft)] rounded-full bg-brand-500" /> RESEARCHING
+      </Badge>
+    );
   }
+  return (
+    <Badge tone={v.tone}>
+      <span className={`h-1.5 w-1.5 rounded-full ${v.dot}`} /> {v.label}
+    </Badge>
+  );
 }
 
 export function StatusBadge({ s }: { s: string }) {
@@ -15,9 +28,7 @@ export function StatusBadge({ s }: { s: string }) {
     queued: { tone: "slate", label: "Queued" },
     running: { tone: "blue", label: "Running" },
     completed: { tone: "green", label: "Completed" },
-    completed_with_errors: { tone: "amber", label: "Completed with errors" },
-    failed: { tone: "red", label: "Failed" },
-    escalated: { tone: "amber", label: "Escalated" },
+    escalated: { tone: "amber", label: "Needs a human" },
   };
   const v = map[s] ?? { tone: "slate" as const, label: s };
   return <Badge tone={v.tone}>{v.label}</Badge>;
