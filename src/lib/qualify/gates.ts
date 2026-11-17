@@ -91,7 +91,17 @@ export function qualifyCompany(s: ResearchState): QualificationResult {
 
   // Gate 3: stage.
   const signals = stageSignals(s);
-  if (signals.length) {
+  const lateStage = ev(s, "late_stage_signal");
+  const namedIcpRound = signals.some((x) => x.kind === "funding_stage");
+  if (lateStage.length && !namedIcpRound) {
+    // Enterprise pricing at a company with millions of users is not a Series A-C signal.
+    reasons.push({
+      gate: "stage",
+      result: "unknown",
+      explanation: `Signals suggest a company well past Series C (${[...new Set(lateStage.map((e) => e.value))].join("; ")}), outside Sprinto's typical Series A–C ICP. Likely already certified; check before outreach.`,
+      evidence: lateStage.slice(0, 3).map(ref),
+    });
+  } else if (signals.length) {
     reasons.push({ gate: "stage", result: "pass", explanation: signals.map((x) => x.description).join("; "), evidence: signals.flatMap((x) => x.evidence).slice(0, 6).map(ref) });
   } else {
     const otherStage = ev(s, "funding_stage")[0];

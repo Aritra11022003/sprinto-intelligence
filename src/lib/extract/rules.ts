@@ -23,12 +23,15 @@ export interface PageFacts {
   role_count_quote: string | null;
   enterprise_signals: QuotedSignal[];
   compliance_signals: QuotedSignal[];
+  /** Signs the company is far beyond Series C (public, acquired, "millions of users"). */
+  late_stage_signals: QuotedSignal[];
 }
 
 export const emptyFacts = (): PageFacts => ({
   company_name: null, product_description: null, product_quote: null, is_software_product: "unknown", software_quote: null,
   sells_to_businesses: "unknown", buyer_quote: null, certifications_held: [], funding_stage: "unknown", funding_quote: null,
   open_roles: [], stated_open_role_count: null, role_count_quote: null, enterprise_signals: [], compliance_signals: [],
+  late_stage_signals: [],
 });
 
 // ── vocabularies ─────────────────────────────────────────────────────────────
@@ -60,6 +63,14 @@ const COMPLIANCE_RULES: Array<{ re: RegExp; label: string }> = [
   { re: /\b(soc ?2|iso ?27001)\b[^.\n]{0,30}\b(in progress|underway|on track|coming soon|working towards|pursuing)\b|\bworking towards\b[^.\n]{0,20}\b(soc ?2|iso ?27001)\b/i, label: "Certification in progress" },
   { re: /\bhipaa\b/i, label: "HIPAA obligations mentioned" },
   { re: /\b(penetration test(ing)?|pen test|encrypt(ed|ion) (at rest|in transit)|bug bounty)\b/i, label: "Security controls published (encryption, pen tests)" },
+];
+
+const LATE_STAGE_RULES: Array<{ re: RegExp; label: string }> = [
+  { re: /\b(tens of )?millions of (users|developers|customers|people|businesses|teams|creators|merchants)\b|\b\d{2,4}(\.\d)?\s?(m|million|b|billion)\+?\s(users|developers|customers|people|businesses)\b/i, label: "Serves millions of users" },
+  { re: /\bworld'?s (largest|most widely (used|adopted)|leading)\b/i, label: "Describes itself as the world's largest / most widely used" },
+  { re: /\b(publicly traded|listed on (the )?(nasdaq|nyse)|\((nasdaq|nyse): ?[a-z]+\))/i, label: "Publicly traded" },
+  { re: /\b(acquired by|a (microsoft|google|salesforce|oracle|amazon|adobe|ibm|cisco|atlassian) company|part of (microsoft|google|salesforce|oracle|amazon|adobe))\b/i, label: "Owned by a large corporation" },
+  { re: /\b(\d{2,3}%|\d{2,3} percent) of (the )?fortune (100|500)\b|\bmost of the fortune (100|500)\b/i, label: "Used by a large share of the Fortune 500" },
 ];
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -127,6 +138,7 @@ export function extractPageFacts(input: { content: string; pageType: PageType; s
   // Certifications the company itself holds (vendor marketing language excluded).
   for (const s of all) {
     if (!CERT_RE.test(s) || VENDOR_CERT_LANGUAGE.test(s)) continue;
+    if (/\b(working towards|in progress|underway|planned|pursuing|plan to|will (be|achieve|complete)|expect(ed|s)? to|on track|coming soon|in the process of)\b/i.test(s)) continue;
     if (SELF_CERT.test(s)) {
       const m = s.match(CERT_RE);
       if (m) facts.certifications_held.push({ name: normalizeCertName(m[0]), quote: s });
@@ -179,6 +191,12 @@ export function extractPageFacts(input: { content: string; pageType: PageType; s
   for (const rule of ENTERPRISE_RULES) {
     const s = firstMatch([...all, ...(input.pageType === "pricing" ? input.shortLines ?? [] : [])], rule.re);
     if (s && !facts.enterprise_signals.some((e) => e.signal === rule.label)) facts.enterprise_signals.push({ signal: rule.label, quote: s });
+  }
+  if (["homepage", "about"].includes(input.pageType)) {
+    for (const rule of LATE_STAGE_RULES) {
+      const s = firstMatch(all, rule.re);
+      if (s) facts.late_stage_signals.push({ signal: rule.label, quote: s });
+    }
   }
   for (const rule of COMPLIANCE_RULES) {
     const s = firstMatch(all, rule.re);

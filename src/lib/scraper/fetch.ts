@@ -22,7 +22,7 @@ export const defaultFetchDeps: FetchDeps = {
   resolve: defaultResolver,
   sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   timeoutMs: 10_000,
-  maxBytes: 2_000_000,
+  maxBytes: 5_000_000,
   maxRetries: MAX_FETCH_RETRIES,
 };
 

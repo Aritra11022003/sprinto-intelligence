@@ -52,12 +52,31 @@ const STRONG_CERT_CLAIM = new RegExp(
 export function detectCertificationClaims(content: string, pageType: PageType): Array<{ name: string; quote: string }> {
   const lines = content.split("\n");
   const out: Array<{ name: string; quote: string }> = [];
-  for (const line of lines) {
+  const NOT_HELD = /\b(planned|in progress|underway|coming soon|pursuing|working towards|not started|roadmap|q[1-4] 20\d\d|expected|upcoming|pending)\b/i;
+  // Trust pages often put the status a line or two below the name ("SOC 2" … "Status: Planned (2026)").
+  // If ANY occurrence of a certification on the page carries a not-held status, it is not held.
+  const notHeld = new Set<string>();
+  lines.forEach((line, i) => {
+    const m = line.match(CERT_RE);
+    if (!m) return;
+    const own = normalizeCertName(m[0]);
+    const after = lines.slice(i + 1, i + 5);
+    // Stop at the next card: a line naming a *different* certification (descriptions repeat the same name).
+    const nextCert = after.findIndex((l) => CERT_RE.test(l) && normalizeCertName(l.match(CERT_RE)![0]) !== own);
+    const statusLines = nextCert >= 0 ? after.slice(0, nextCert) : after;
+    if (NOT_HELD.test(line) || statusLines.some((l) => NOT_HELD.test(l))) notHeld.add(own);
+  });
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineCert = line.match(CERT_RE);
+    if (lineCert && notHeld.has(normalizeCertName(lineCert[0]))) continue;
     const isBadge = /^(Badge|Footer):/.test(line);
     if (!(pageType === "security" || isBadge)) continue;
     // Compliance vendors market certifications they help customers get: not a certification held.
     if (/\b(help(s|ing)? (you|teams|companies)|get (you )?(soc|iso|certified|compliant)|become (soc|iso|compliant)|automate|your (soc|iso|audit)|in weeks|in days)\b/i.test(line)) continue;
-    const m = line.match(STRONG_CERT_CLAIM) ?? (isBadge && /^Badge:/.test(line) ? line.match(CERT_RE) : null);
+    // On a trust/security page, a short line that is just a certification name ("SOC 2 Type II") is a held certification.
+    const bareOnTrustPage = pageType === "security" && line.split(/\s+/).length <= 8 && CERT_RE.test(line) && !/\b(in progress|underway|coming soon|pursuing|working towards|planned|roadmap|what is|guide|learn)\b/i.test(line);
+    const m = line.match(STRONG_CERT_CLAIM) ?? (isBadge && /^Badge:/.test(line) ? line.match(CERT_RE) : null) ?? (bareOnTrustPage ? line.match(CERT_RE) : null);
     if (!m) continue;
     const name = normalizeCertName(line.match(CERT_RE)?.[0] ?? "");
     const quote = line.replace(/^(Badge|Footer):\s*/, "").slice(0, 200);
@@ -163,6 +182,8 @@ export function extractCompanyFacts(
   const ent = [...state.enterpriseSignals];
   for (const s of facts.enterprise_signals.slice(0, 10)) if (add("enterprise_signal", s.signal, s.quote, 0.75)) ent.push(s.signal);
   if (ent.length !== state.enterpriseSignals.length) patch.enterpriseSignals = [...new Set(ent)];
+
+  for (const s of facts.late_stage_signals.slice(0, 5)) add("late_stage_signal", s.signal, s.quote, 0.75);
 
   const comp = [...state.complianceSignals];
   for (const s of facts.compliance_signals.slice(0, 10)) if (add("compliance_signal", s.signal, s.quote, 0.7)) comp.push(s.signal);

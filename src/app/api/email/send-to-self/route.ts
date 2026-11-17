@@ -18,8 +18,6 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
-  const rl = rateLimit(`send:${clientKey(req.headers)}`, 5, 60_000);
-  if (!rl.ok) return NextResponse.json({ error: `Too many send attempts. Try again in ${rl.retryAfterSec}s.` }, { status: 429 });
   let json: unknown;
   try {
     json = await req.json();
@@ -30,9 +28,14 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Provide a subject, body and researchId." }, { status: 400 });
 
   const self = configuredSelfAddress();
+  // Recipient check first: a request naming any other address is refused whatever the configuration.
+  if (parsed.data.to && (!self || parsed.data.to.trim().toLowerCase() !== self)) return NextResponse.json({ error: "Emails can only be sent to the configured user's own inbox." }, { status: 403 });
   const mailer = getMailer();
   if (!self || !mailer) return NextResponse.json({ error: "Email is not configured on the server (set GMAIL_USER_EMAIL plus GMAIL_APP_PASSWORD or RESEND_API_KEY). The draft is still shown." }, { status: 503 });
-  if (parsed.data.to && parsed.data.to.trim().toLowerCase() !== self) return NextResponse.json({ error: "Emails can only be sent to the configured user's own inbox." }, { status: 403 });
+
+  // Rate-limit only real send attempts.
+  const rl = rateLimit(`send:${clientKey(req.headers)}`, 5, 60_000);
+  if (!rl.ok) return NextResponse.json({ error: `Too many send attempts. Try again in ${rl.retryAfterSec}s.` }, { status: 429 });
 
   const result = await deliverToSelf(mailer, self, { subject: parsed.data.subject, body: parsed.data.body }, `manual:${parsed.data.researchId}`);
   if (result.status !== "sent") return NextResponse.json({ error: result.error ?? "Send failed", draftPreserved: true }, { status: 502 });

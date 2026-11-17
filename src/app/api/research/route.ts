@@ -18,9 +18,6 @@ function jsonError(status: number, error: string, details?: unknown) {
 }
 
 export async function POST(req: Request) {
-  const rl = rateLimit(`research:${clientKey(req.headers)}`, 6, 60_000);
-  if (!rl.ok) return jsonError(429, `Too many research requests. Try again in ${rl.retryAfterSec}s.`);
-
   const text = await req.text();
   if (text.length > 100_000) return jsonError(413, "Request body too large");
   let json: unknown;
@@ -37,6 +34,10 @@ export async function POST(req: Request) {
   if (entries.length === 0) {
     return jsonError(400, rejected.length ? "None of the entries are valid company domains." : "Enter at least one company domain.", { rejected });
   }
+
+  // Rate-limit only requests that will actually start research (invalid input is cheap and gets its real error).
+  const rl = rateLimit(`research:${clientKey(req.headers)}`, 20, 60_000);
+  if (!rl.ok) return jsonError(429, `Too many research requests. Try again in ${rl.retryAfterSec}s.`);
 
   const ids = entries.map(() => randomUUID());
   const encoder = new TextEncoder();

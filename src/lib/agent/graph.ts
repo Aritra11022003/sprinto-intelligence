@@ -49,8 +49,9 @@ export function companyNameFrom(siteName: string | null, title: string, domain: 
 export function outreachEligible(s: Pick<ResearchState, "qualification" | "qualificationReasons">): boolean {
   if (s.qualification === "qualified") return true;
   if (s.qualification !== "manual_review") return false;
-  const g = (k: string) => s.qualificationReasons.find((r) => r.gate === k)?.result;
-  return g("b2b_saas") === "pass" && g("certification") === "pass";
+  const g = (k: string) => s.qualificationReasons.find((r) => r.gate === k);
+  const tooBig = g("stage")?.evidence.some((e) => e.field === "late_stage_signal");
+  return g("b2b_saas")?.result === "pass" && g("certification")?.result === "pass" && !tooBig;
 }
 
 export interface AgentDeps {
@@ -211,7 +212,9 @@ export function buildResearchGraph(deps: AgentDeps) {
       const fromSitemap = sitemapCandidates(sitemapUrls, s.siteHost, links);
       const known = [...links, ...fromSitemap];
       // With a sitemap, a page type it doesn't list most likely doesn't exist: don't burn hits guessing.
-      const guessed = sitemapUrls.length ? [] : guessedCandidates(origin, known);
+      // Exception: /security. Certification is the disqualifying gate and sitemaps often omit trust pages,
+      // so one guessed /security check is always worth it.
+      const guessed = sitemapUrls.length ? guessedCandidates(origin, known).filter((g) => g.url === `${origin}/security`) : guessedCandidates(origin, known);
       const candidates = [...known, ...guessed].filter((x) => !s.visitedUrls.includes(x.url));
       s = log({ ...s, candidateLinks: candidates }, "clean_content", "links_discovered", { fromHomepage: links.length, fromSitemap: fromSitemap.length, candidates: candidates.map((x) => `${x.pageType}: ${x.url} (${x.source})`).slice(0, 20) });
     }

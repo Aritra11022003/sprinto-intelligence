@@ -61,7 +61,8 @@ describe("five-hit rule", () => {
     const { site, deps, state } = setup({ domain: DOMAIN, pages: { "/": home, "/sitemap.xml": sitemap, "/plans": PRICING_ENTERPRISE } });
     const out = await runCompanyResearch(state, deps);
     expect(out.pages.map((p) => p.url)).toContain(`https://${DOMAIN}/plans`);
-    expect(site.pageRequests().some((r) => /\/(security|careers|team)$/.test(r))).toBe(false); // nothing guessed
+    expect(site.pageRequests().some((r) => /\/(careers|team|jobs|about)$/.test(r))).toBe(false); // nothing guessed...
+    expect(site.pageRequests().filter((r) => r.endsWith("/security"))).toHaveLength(1); // ...except one /security check (certification gate)
     expect(out.pages.find((p) => p.url.endsWith("/plans"))!.selectionReason).toMatch(/sitemap/);
   });
 });
@@ -127,6 +128,42 @@ describe("qualification gates", () => {
       for (const e of r.evidence) expect(e.supportingQuote.length).toBeGreaterThan(0);
     }
     for (const e of out.evidence) expect(e.sourceUrl).toMatch(/^https:\/\/flowlane\.io/);
+  });
+});
+
+describe("ICP fit beyond the gates", () => {
+  it("does not qualify a company that is clearly far past Series C, and drafts no email", async () => {
+    const home = page("MegaHub | The developer platform", `<h1>The world's most widely adopted developer platform</h1><p>MegaHub is a cloud platform where millions of developers and businesses build, ship and maintain their software.</p>`);
+    const { deps, state } = setup({ domain: "megahub.com", pages: { "/": home, "/pricing": PRICING_ENTERPRISE, "/team": TEAM_PAGE } });
+    const out = await runCompanyResearch(state, deps);
+    expect(out.qualification).toBe("manual_review");
+    expect(out.qualificationReasons.find((r) => r.gate === "stage")!.explanation).toMatch(/past Series C/);
+    expect(out.emailBody).toBeNull();
+  });
+
+  it("reads certifications listed as plain cards on a trust page", async () => {
+    const trust = page("Trust Center | Flowlane", `<h1>Trust Center</h1><p>Our approach to protecting customer data across every product and region we operate in.</p><div class="cards"><div>SOC 2 Type II</div><div>ISO/IEC 27001:2022</div></div>`);
+    const { deps, state } = setup({ domain: DOMAIN, pages: { ...QUALIFIED_SITE, "/security": trust } });
+    const out = await runCompanyResearch(state, deps);
+    expect(out.qualification).toBe("disqualified");
+    expect(out.namedCertifications).toEqual(expect.arrayContaining(["SOC 2", "ISO 27001"]));
+  });
+
+  it("reads a status line below a certification card (Compliant vs Planned)", async () => {
+    const trust = page("Compliance | Flowlane", `<h1>Compliance</h1><p>An overview of the security and privacy frameworks we follow for our customers worldwide.</p>
+      <div><h3>SOC 2</h3><p>SOC2 is a framework for managing and auditing security.</p><span>Status:</span><span>Compliant</span></div>
+      <div><h3>ISO 27001</h3><p>ISO 27001 is an international standard for information security.</p><span>Status: Planned (2026)</span></div>`);
+    const { deps, state } = setup({ domain: DOMAIN, pages: { ...QUALIFIED_SITE, "/security": trust } });
+    const out = await runCompanyResearch(state, deps);
+    expect(out.namedCertifications).toEqual(["SOC 2"]);
+  });
+
+  it("does not count a certification that is only 'in progress'", async () => {
+    const trust = page("Security | Flowlane", `<h1>Security</h1><p>We take security seriously and encrypt all customer data at rest and in transit across our platform.</p><div>SOC 2 Type II: in progress</div>`);
+    const { deps, state } = setup({ domain: DOMAIN, pages: { ...QUALIFIED_SITE, "/security": trust } });
+    const out = await runCompanyResearch(state, deps);
+    expect(out.namedCertifications).toEqual([]);
+    expect(out.complianceSignals).toContain("Certification in progress");
   });
 });
 

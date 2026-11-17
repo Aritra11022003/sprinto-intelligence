@@ -188,6 +188,12 @@ describe("rule-based extraction", () => {
     expect(f.enterprise_signals.map((e) => e.signal)).toContain("Enterprise plan / tier");
     expect(f.compliance_signals.map((e) => e.signal)).toContain("GDPR obligations mentioned");
   });
+  it("never counts a certification that is planned or in progress as held", () => {
+    for (const line of ["We are working towards SOC 2 Type II certification.", "Our SOC 2 audit is in progress and we expect to be certified in Q3.", "We plan to achieve ISO 27001 certification next year."]) {
+      expect(extractPageFacts({ content: `Title: Acme\n${line}`, pageType: "security" }).certifications_held, line).toEqual([]);
+    }
+    expect(extractPageFacts({ content: "Title: Acme\nWe are SOC 2 Type II certified.", pageType: "homepage" }).certifications_held.map((c) => c.name)).toEqual(["SOC 2"]);
+  });
   it("counts open roles on a careers page", () => {
     const f = extractPageFacts({ content: "Title: Careers\nJoin us", pageType: "careers", shortLines: ["Senior Backend Engineer", "Product Designer", "Security Engineer", "Account Executive", "Engineering Manager", "Why join us", "Benefits"] });
     expect(f.open_roles.map((r) => r.title)).toEqual(["Senior Backend Engineer", "Product Designer", "Security Engineer", "Account Executive", "Engineering Manager"]);
@@ -227,5 +233,19 @@ describe("email safety", () => {
     expect(problems.join(" ")).toMatch(/first name/);
     expect(problems.join(" ")).toMatch(/banned/);
     expect(problems.join(" ")).toMatch(/not grounded/);
+  });
+});
+
+describe("page classification", () => {
+  it("classifies by the deciding path segment, not any segment", async () => {
+    const { classifyPage } = await import("@/lib/scraper/classify");
+    const cases: Record<string, string> = {
+      "/teams/security": "team", "/security": "security", "/company/security": "security", "/trust": "security", "/en/security": "security",
+      "/company/careers": "careers", "/careers": "careers", "/careers/ai-engineer": "careers", "/teams/people": "team", "/team": "team",
+      "/pricing": "pricing", "/en-us/pricing": "pricing", "/blog/security-best-practices": "other", "/customers/acme": "customers",
+      "/about": "about", "/company": "about", "/handbook/security": "other", "/docs/pricing": "other", "/legal/security": "security",
+    };
+    const wrong = Object.entries(cases).filter(([p, want]) => classifyPage(`https://x.com${p}`) !== want).map(([p, want]) => `${p}: got ${classifyPage(`https://x.com${p}`)}, want ${want}`);
+    expect(wrong).toEqual([]);
   });
 });
