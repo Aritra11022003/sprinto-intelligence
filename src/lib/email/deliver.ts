@@ -30,6 +30,6 @@ export async function deliverToSelf(mailer: Mailer, selfEmail: string, message: 
     return { status: "sent", messageId: id, error: null };
   } catch (err) {
     sent.delete(key); // allow a later retry
-    return { status: "failed", messageId: null, error: `Gmail send failed: ${(err as Error).message}` };
+    return { status: "failed", messageId: null, error: `${mailer.provider === "resend" ? "Resend" : "Gmail"} send failed: ${(err as Error).message}` };
   }
 }

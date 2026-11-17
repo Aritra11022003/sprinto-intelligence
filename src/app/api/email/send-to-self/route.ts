@@ -3,7 +3,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { deliverToSelf } from "@/lib/email/deliver";
-import { configuredSelfAddress, gmailMailer } from "@/lib/email/gmail";
+import { configuredSelfAddress } from "@/lib/email/gmail";
+import { getMailer } from "@/lib/email/mailer";
 import { clientKey, rateLimit } from "@/lib/security/rate-limit";
 
 export const runtime = "nodejs";
@@ -29,8 +30,8 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Provide a subject, body and researchId." }, { status: 400 });
 
   const self = configuredSelfAddress();
-  const mailer = gmailMailer();
-  if (!self || !mailer) return NextResponse.json({ error: "Gmail is not configured on the server (GMAIL_USER_EMAIL / GMAIL_APP_PASSWORD). The draft is still shown." }, { status: 503 });
+  const mailer = getMailer();
+  if (!self || !mailer) return NextResponse.json({ error: "Email is not configured on the server (set GMAIL_USER_EMAIL plus GMAIL_APP_PASSWORD or RESEND_API_KEY). The draft is still shown." }, { status: 503 });
   if (parsed.data.to && parsed.data.to.trim().toLowerCase() !== self) return NextResponse.json({ error: "Emails can only be sent to the configured user's own inbox." }, { status: 403 });
 
   const result = await deliverToSelf(mailer, self, { subject: parsed.data.subject, body: parsed.data.body }, `manual:${parsed.data.researchId}`);

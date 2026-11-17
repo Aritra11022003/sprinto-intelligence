@@ -339,14 +339,14 @@ export function buildResearchGraph(deps: AgentDeps) {
     if (s.emailSubject && s.emailBody) {
       s = stage(s, "gmail_delivery");
       if (!deps.mailer || !deps.selfEmail) {
-        s = { ...s, emailStatus: "not_configured", emailError: s.emailError ?? "Gmail is not configured on the server; the draft is shown here." };
+        s = { ...s, emailStatus: "not_configured", emailError: s.emailError ?? "Email is not configured on the server; the draft is shown here." };
       } else if (s.emailError) {
         s = log(s, "save_results", "auto_send_skipped", { reason: s.emailError });
       } else if (deps.autoSend) {
         deps.onUpdate?.(s);
         const result = await deliverToSelf(deps.mailer, deps.selfEmail, buildSelfEmail(s), s.id);
         s = { ...s, emailStatus: result.status, emailMessageId: result.messageId, emailError: result.error };
-        s = log(s, "save_results", result.status === "sent" ? "email_sent_to_self" : "email_send_failed", { error: result.error });
+        s = log(s, "save_results", result.status === "sent" ? "email_sent_to_self" : "email_send_failed", { error: result.error, provider: deps.mailer.provider });
       }
     }
     return { research: s, next: "complete_or_escalate" };

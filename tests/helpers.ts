@@ -35,6 +35,7 @@ export const SELF = "me@example.com";
 
 export function recordingMailer(opts: { fail?: boolean } = {}): Mailer & { sent: Array<{ to: string; subject: string; body: string }> } {
   const m = {
+    provider: "gmail" as const,
     from: SELF,
     sent: [] as Array<{ to: string; subject: string; body: string }>,
     async send(msg: { to: string; subject: string; body: string }) {

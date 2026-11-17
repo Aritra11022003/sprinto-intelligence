@@ -1,4 +1,4 @@
-// send_email_to_self: Gmail SMTP with an App Password. Only ever sends to GMAIL_USER_EMAIL:
+// send_email_to_self via Gmail SMTP with an App Password (free). Only ever sends to GMAIL_USER_EMAIL:
 // the recipient is never taken from research data or from the browser.
 import nodemailer from "nodemailer";
 
@@ -10,6 +10,7 @@ export class RecipientNotAllowedError extends Error {
 }
 
 export interface Mailer {
+  readonly provider: "gmail" | "resend";
   readonly from: string;
   send(msg: { to: string; subject: string; body: string }): Promise<{ id: string }>;
 }
@@ -40,6 +41,7 @@ export function gmailMailer(): Mailer | null {
   if (!self || !pass) return null;
   const transport = nodemailer.createTransport({ host: "smtp.gmail.com", port: 465, secure: true, auth: { user: self, pass }, connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 20_000 });
   return {
+    provider: "gmail",
     from: self,
     async send({ to, subject, body }) {
       assertRecipientAllowed(to);

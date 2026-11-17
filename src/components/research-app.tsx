@@ -13,7 +13,7 @@ const MAX = 10;
 const EXAMPLE = "infisical.com\ntwenty.com\nlinear.app\ndocumenso.com";
 
 type Rejected = Array<{ input: string; reason: string }>;
-interface Config { gmail: boolean; selfEmailMasked: string | null; autoSend: boolean }
+interface Config { email: boolean; provider: "gmail" | "resend" | null; selfEmailMasked: string | null; autoSend: boolean }
 
 function Stat({ label, value, icon, tone }: { label: string; value: number | string; icon: React.ReactNode; tone: string }) {
   return (
@@ -138,8 +138,8 @@ export function ResearchApp() {
         </p>
       </div>
 
-      {config && !config.gmail && (
-        <Alert tone="amber" title="Gmail is not connected">Research works fully; emails are drafted and shown here but not sent. Set GMAIL_USER_EMAIL and GMAIL_APP_PASSWORD on the server to deliver them.</Alert>
+      {config && !config.email && (
+        <Alert tone="amber" title="Email is not connected">Research works fully; emails are drafted and shown here but not sent. Set GMAIL_USER_EMAIL plus either GMAIL_APP_PASSWORD (Gmail) or RESEND_API_KEY (Resend) on the server to deliver them. Both are free.</Alert>
       )}
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
@@ -205,7 +205,7 @@ export function ResearchApp() {
         {(busy || companies.length > 0) && (
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Live research</h2>
-            <span className="text-sm text-slate-500">{doneCount}/{order.length} done{config?.gmail ? ` · emails go to ${config.selfEmailMasked}` : ""}</span>
+            <span className="text-sm text-slate-500">{doneCount}/{order.length} done{config?.email ? ` · emails go to ${config.selfEmailMasked} via ${config.provider === "resend" ? "Resend" : "Gmail"}` : ""}</span>
           </div>
         )}
         {rejected.length > 0 && (

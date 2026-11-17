@@ -1,7 +1,8 @@
 // Runs research for a batch of entries with bounded concurrency.
 import { randomUUID } from "node:crypto";
 import { runCompanyResearch, type AgentDeps } from "@/lib/agent/graph";
-import { configuredSelfAddress, gmailMailer } from "@/lib/email/gmail";
+import { configuredSelfAddress } from "@/lib/email/gmail";
+import { getMailer } from "@/lib/email/mailer";
 import { defaultFetchDeps } from "@/lib/scraper/fetch";
 import type { ResearchEntry } from "@/lib/security/domain";
 import { initialState, type ResearchState } from "@/lib/types";
@@ -11,7 +12,7 @@ export const COMPANY_CONCURRENCY = 5;
 export function productionDeps(): Omit<AgentDeps, "onUpdate"> {
   return {
     fetchDeps: defaultFetchDeps,
-    mailer: gmailMailer(),
+    mailer: getMailer(),
     selfEmail: configuredSelfAddress(),
     autoSend: process.env.AUTO_SEND_TO_SELF !== "false",
     now: () => new Date(),
@@ -35,7 +36,8 @@ export async function runBatch(entries: ResearchEntry[], deps: Omit<AgentDeps, "
 export function configStatus() {
   const e = configuredSelfAddress();
   return {
-    gmail: !!gmailMailer(),
+    email: !!getMailer(),
+    provider: getMailer()?.provider ?? null,
     selfEmailMasked: e ? `${e.split("@")[0].slice(0, 2)}•••@${e.split("@")[1]}` : null,
     autoSend: process.env.AUTO_SEND_TO_SELF !== "false",
   };
