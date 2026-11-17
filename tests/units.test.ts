@@ -164,6 +164,22 @@ describe("contact discovery from the website", () => {
     expect(worksElsewhere("VP Engineering at Zoho", keys)).toBe(false);
     expect(worksElsewhere("Head of Security, Zoho Corporation", keys)).toBe(false);
   });
+  it("finds people in press-style quotes and cleans social labels from titles", () => {
+    const a = extractPeople(['"We are thrilled," said Jane Doe, CEO of Acme, in a statement.'], "https://acme.com/press", ["acme"]);
+    expect(a.map((p) => `${p.name}|${p.title}`)).toEqual(["Jane Doe|CEO at Acme"]);
+    const b = extractPeople(["John Roe, co-founder and CTO, said the launch was the result of two years of work."], "https://acme.com/press", ["acme"]);
+    expect(b.map((p) => p.name)).toEqual(["John Roe"]);
+    const c = extractPeople(['"Great product," said Mark Fields, CFO at Globex.'], "https://acme.com/", ["acme"]);
+    expect(c).toEqual([]); // works elsewhere: a testimonial
+    const d = extractPeople(["August Flanagan", "Co-Founder · LinkedIn"], "https://acme.com/about", ["acme"]);
+    expect(d[0].title).toBe("Co-Founder");
+  });
+  it("finds founders in an origin-story sentence", () => {
+    const a = extractPeople(["Uku Taht started Plausible in December 2018, building it alone."], "https://plausible.io/about", ["plausible"]);
+    expect(a.map((p) => `${p.name}|${p.title}`)).toEqual(["Uku Taht|Founder"]);
+    expect(extractPeople(["Jane Doe and John Roe founded Acme to fix payroll."], "https://acme.com/about", ["acme"]).map((p) => p.name)).toEqual(["Jane Doe", "John Roe"]);
+    expect(extractPeople(["Rob Hope started using Acme last year."], "https://acme.com/", ["acme"])).toEqual([]);
+  });
   it("finds founders named in prose", () => {
     const people = extractPeople(["Acme was founded by Jane Doe and John Roe in 2021 to fix payroll."], "https://acme.com/about", ["acme"]);
     expect(people.map((p) => p.name)).toEqual(["Jane Doe", "John Roe"]);
@@ -305,5 +321,36 @@ describe("API input formats (for automated test scripts)", () => {
     expect(n(42)).toBeNull();
     expect(n(null)).toBeNull();
     expect(n([1, 2])).toBeNull();
+  });
+});
+
+describe("email variety", () => {
+  it("writes different emails for different companies, and the same email for the same company", async () => {
+    const { generateEmail } = await import("@/lib/outreach/email");
+    const { validateEmailDraft } = await import("@/lib/email/quality");
+    const ev = (domain: string) => ({ field: "enterprise_signal", value: "SSO / SAML for enterprise customers", sourceUrl: `https://${domain}/pricing`, sourceTitle: "Pricing", extractedAt: "", confidence: 0.75, supportingQuote: "Enterprise plan with SSO and SAML" });
+    const mk = (domain: string) => {
+      const s = initialState({ id: domain, domain, manualContact: { name: "Jane Doe", title: "CTO" } });
+      s.companyName = domain.split(".")[0];
+      s.evidence = [ev(domain)];
+      return generateEmail(s, ["enterprise", "no_cert"], [ev(domain)]);
+    };
+    const domains = ["alpha.io", "bravo.com", "charlie.ai", "delta.co", "echo.app", "foxtrot.dev"];
+    const bodies = domains.map((d) => mk(d).body.replace(new RegExp(d.split(".")[0], "g"), "X"));
+    expect(new Set(bodies).size).toBeGreaterThanOrEqual(4); // varied wording across companies
+    expect(mk("alpha.io").body).toBe(mk("alpha.io").body); // stable per company
+    for (const d of domains) {
+      const e = mk(d);
+      expect(validateEmailDraft(e, { firstName: "Jane", evidence: [ev(d)] }), `${d}: ${e.body}`).toEqual([]);
+      expect(e.body).toMatch(/^(Hi|Hello) Jane,/);
+    }
+  });
+});
+
+describe("email grammar", () => {
+  it("forms possessives correctly", async () => {
+    const { possessive } = await import("@/lib/outreach/email");
+    expect(possessive("Acme")).toBe("Acme's");
+    expect(possessive("Plausible Analytics")).toBe("Plausible Analytics'");
   });
 });

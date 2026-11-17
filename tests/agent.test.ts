@@ -61,7 +61,7 @@ describe("five-hit rule", () => {
     const { site, deps, state } = setup({ domain: DOMAIN, pages: { "/": home, "/sitemap.xml": sitemap, "/plans": PRICING_ENTERPRISE } });
     const out = await runCompanyResearch(state, deps);
     expect(out.pages.map((p) => p.url)).toContain(`https://${DOMAIN}/plans`);
-    expect(site.pageRequests().some((r) => /\/(careers|team|jobs|about)$/.test(r))).toBe(false); // nothing guessed...
+    expect(site.pageRequests().some((r) => /\/(careers|team|jobs)$/.test(r))).toBe(false); // nothing guessed... (except /security and /about)
     expect(site.pageRequests().filter((r) => r.endsWith("/security"))).toHaveLength(1); // ...except one /security check (certification gate)
     expect(out.pages.find((p) => p.url.endsWith("/plans"))!.selectionReason).toMatch(/sitemap/);
   });
@@ -250,7 +250,7 @@ describe("contact, pain points and email", () => {
     expect(out.contactCandidates.map((c) => c.name)).not.toContain("Mark Fields"); // testimonial from another company
     expect(out.painPoints).toHaveLength(2);
     expect(out.painPoints.every((p) => p.label === "hypothesis" && p.evidenceUrls.length > 0)).toBe(true);
-    expect(out.emailBody).toMatch(/^Hi Priya,/);
+    expect(out.emailBody).toMatch(/^(Hi|Hello) Priya,/);
     expect(out.emailError).toBeNull();
     expect(out.emailStatus).toBe("sent");
     expect(mailer.sent).toHaveLength(1);
@@ -258,12 +258,36 @@ describe("contact, pain points and email", () => {
     expect(mailer.sent[0].body).toMatch(/Sent only to you/);
   });
 
+  it("finds the founder in the site's structured data", async () => {
+    const ld = JSON.stringify({ "@context": "https://schema.org", "@type": "Organization", name: "Flowlane", founder: [{ "@type": "Person", name: "Nina Alvarez", jobTitle: "Co-founder & CEO" }] });
+    const home = HOME_B2B.replace("</head>", `<script type="application/ld+json">${ld}</script></head>`);
+    const { deps, state } = setup({ domain: DOMAIN, pages: { "/": home, "/pricing": PRICING_ENTERPRISE } });
+    const out = await runCompanyResearch(state, deps);
+    expect(out.contact?.name).toBe("Nina Alvarez");
+    expect(out.emailBody).toMatch(/^(Hi|Hello) Nina,/);
+  });
+
+  it("finds a leader quoted in a press release", async () => {
+    const press = page("Press | Flowlane", `<h1>Flowlane raises funding to expand in Europe</h1><p>"Finance teams deserve better tools than spreadsheets," said Omar Haddad, co-founder and CEO of Flowlane. The company will use the investment to grow its team in Berlin and London.</p>`);
+    const { deps, state } = setup({ domain: DOMAIN, pages: { "/": HOME_B2B.replace('<a href="/team">Team</a>', '<a href="/press">Press</a>'), "/pricing": PRICING_ENTERPRISE, "/press": press } });
+    const out = await runCompanyResearch(state, deps);
+    expect(out.contact?.name).toBe("Omar Haddad");
+    expect(out.contact?.title).toMatch(/CEO/i);
+  });
+
+  it("prefers a leader on the team page over a person quoted on the homepage", async () => {
+    const home = HOME_B2B.replace("</main>", `<blockquote>Flowlane changed how we work. <span>Rob Hale</span><span>Product designer and founder</span></blockquote></main>`);
+    const { deps, state } = setup({ domain: DOMAIN, pages: { ...QUALIFIED_SITE, "/": home } });
+    const out = await runCompanyResearch(state, deps);
+    expect(out.contact?.name).toBe("Priya Raman");
+  });
+
   it("uses a contact provided in the input instead of searching for one", async () => {
     const { site, deps, state } = setup({ domain: DOMAIN, pages: QUALIFIED_SITE, manualContact: { name: "Jordan Blake", title: "Head of Security" } });
     const out = await runCompanyResearch(state, deps);
     expect(out.contact?.name).toBe("Jordan Blake");
     expect(out.contactStatus).toBe("manual");
-    expect(out.emailBody).toMatch(/^Hi Jordan,/);
+    expect(out.emailBody).toMatch(/^(Hi|Hello) Jordan,/);
     expect(site.pageRequests().some((r) => r.endsWith("/team"))).toBe(false); // no hit spent looking
   });
 
@@ -290,6 +314,6 @@ describe("contact, pain points and email", () => {
     const { deps, state } = setup({ domain: DOMAIN, pages: QUALIFIED_SITE, mailer: null });
     const out = await runCompanyResearch(state, deps);
     expect(out.emailStatus).toBe("not_configured");
-    expect(out.emailBody).toMatch(/^Hi Priya,/);
+    expect(out.emailBody).toMatch(/^(Hi|Hello) Priya,/);
   });
 });

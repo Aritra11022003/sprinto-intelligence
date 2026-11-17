@@ -23,13 +23,13 @@ export const FIELD_SOURCES: Record<ResearchField, Array<{ type: PageType; why: s
   ],
   contact: [
     { type: "team", why: "team/leadership pages list decision-makers by name and title" },
-    { type: "about", why: "about pages usually name the founders and leadership" },
+    { type: "about", why: "about / press pages usually name the founders and leadership" },
   ],
 };
 
 /** Max page fetches each question is worth (evidence map), within the global five-hit cap. */
 // Stage is worth 2 fetches (L4 evidence map); this also keeps a hit free for the team page.
-export const FIELD_FETCH_LIMIT: Record<ResearchField, number> = { certification_status: 1, b2b_saas: 1, stage: 2, contact: 1 };
+export const FIELD_FETCH_LIMIT: Record<ResearchField, number> = { certification_status: 1, b2b_saas: 1, stage: 2, contact: 2 };
 
 const FIELD_LABEL: Record<ResearchField, string> = {
   certification_status: "Certification status unknown",
@@ -50,7 +50,11 @@ export interface SourceSelection {
 
 /** A team page is worth a hit once the company is confirmed B2B SaaS, not certified, and nobody is named yet. */
 export function needsContact(state: ResearchState): boolean {
-  return !state.contact && state.isSaas === true && state.isB2B === true && state.namedCertifications.length === 0 && (state.fieldAttempts["contact"] ?? 0) < FIELD_FETCH_LIMIT.contact;
+  // A person seen only on the homepage may be a testimonial: still worth one look at a team/about page.
+  const onlyHomepage = !!state.contact && state.contact.source === "website" && state.pages.some((p) => p.pageType === "homepage" && p.url === state.contact!.sourceUrl);
+  const readPeoplePage = state.pages.some((p) => (p.pageType === "team" || p.pageType === "about") && p.fetchStatus === "ok");
+  const wanted = !state.contact || (onlyHomepage && !readPeoplePage);
+  return wanted && state.isSaas === true && state.isB2B === true && state.namedCertifications.length === 0 && (state.fieldAttempts["contact"] ?? 0) < FIELD_FETCH_LIMIT.contact;
 }
 
 /**
@@ -73,26 +77,43 @@ export function selectNextSource(state: ResearchState): SourceSelection | null {
   if (state.hitCount >= MAX_HITS) return null;
   if (state.qualification === "disqualified") return null;
   // ICP facts first; then (budget permitting) a team page for a named contact.
-  const fields: ResearchField[] = [...openFields(state), ...(needsContact(state) ? (["contact"] as const) : [])];
+  const open = openFields(state);
+  const contact = needsContact(state) ? (["contact"] as const) : [];
+  // With one page left, a named contact (the brief: "addressed to a real person by name") beats a second stage guess.
+  const lastHit = MAX_HITS - state.hitCount === 1;
+  const stageTried = (state.fieldAttempts["stage"] ?? 0) >= 1;
+  const fields: ResearchField[] = lastHit && stageTried && contact.length && !open.some((f) => f !== "stage") ? [...contact, ...open] : [...open, ...contact];
   for (const field of fields) {
     if ((state.fieldAttempts[field] ?? 0) >= fieldLimit(state, field)) continue;
-    for (const { type, why } of FIELD_SOURCES[field]) {
+    const secondCertTry = field === "certification_status" && (state.fieldAttempts[field] ?? 0) >= 1;
+    const options: Array<{ cand: CandidateLink; type: PageType; why: string; order: number }> = [];
+    FIELD_SOURCES[field].forEach(({ type, why }, order) => {
       // Don't fetch a second page of a type we already read successfully.
-      if (state.pages.some((p) => p.pageType === type && p.fetchStatus === "ok")) continue;
-      const candidates = state.candidateLinks
-        .filter((c) => c.pageType === type && !isVisited(state, c.url))
-        .sort((a, b) => (a.source === b.source ? b.score - a.score : SOURCE_RANK[a.source] - SOURCE_RANK[b.source]));
-      const pick = candidates[0];
-      if (!pick) continue;
-      const how = pick.source === "homepage_link" ? `linked from the homepage${pick.anchorText ? ` ("${pick.anchorText}")` : ""}` : pick.source === "sitemap" ? "listed in the site's sitemap" : "conventional path (not linked from the homepage or sitemap)";
-      return {
-        url: pick.url,
-        pageType: type,
-        missingField: field,
-        candidate: pick,
-        reason: `${FIELD_LABEL[field]}. Chose the ${type} page, ${how}: ${why}. Hit ${state.hitCount + 1}/${MAX_HITS}.`,
-      };
-    }
+      if (state.pages.some((p) => p.pageType === type && p.fetchStatus === "ok")) return;
+      for (const cand of state.candidateLinks) {
+        if (cand.pageType !== type || isVisited(state, cand.url)) continue;
+        // A second certification try only uses pages the site actually links or lists, never a guess.
+        if (secondCertTry && cand.source === "guessed_path") continue;
+        options.push({ cand, type, why, order });
+      }
+    });
+    // Stage/B2B: page-type order matters most. Contact: a page the site links beats a guessed one of a "better" type.
+    options.sort((a, b) =>
+      field === "contact"
+        ? SOURCE_RANK[a.cand.source] - SOURCE_RANK[b.cand.source] || a.order - b.order || b.cand.score - a.cand.score
+        : a.order - b.order || SOURCE_RANK[a.cand.source] - SOURCE_RANK[b.cand.source] || b.cand.score - a.cand.score,
+    );
+    const best = options[0];
+    if (!best) continue;
+    const pick = best.cand;
+    const how = pick.source === "homepage_link" ? `linked from the homepage${pick.anchorText ? ` ("${pick.anchorText}")` : ""}` : pick.source === "sitemap" ? "listed in the site's sitemap" : "conventional path (not linked from the homepage or sitemap)";
+    return {
+      url: pick.url,
+      pageType: best.type,
+      missingField: field,
+      candidate: pick,
+      reason: `${FIELD_LABEL[field]}. Chose the ${best.type} page, ${how}: ${best.why}. Hit ${state.hitCount + 1}/${MAX_HITS}.`,
+    };
   }
   return null;
 }

@@ -128,26 +128,33 @@ function collectBlocks($: cheerio.CheerioAPI, root: AnyNode): Block[] {
 /** Collect human-readable names/descriptions from JSON-LD blocks (the site's own published summary). */
 export function extractStructuredData($: cheerio.CheerioAPI): string[] {
   const out: string[] = [];
-  const visit = (node: unknown, depth: number) => {
+  const people: string[] = [];
+  const visit = (node: unknown, depth: number, key: string) => {
     if (depth > 6 || out.length >= 20 || node === null || typeof node !== "object") return;
-    if (Array.isArray(node)) return node.forEach((n) => visit(n, depth + 1));
+    if (Array.isArray(node)) return node.forEach((n) => visit(n, depth + 1, key));
     const o = node as Record<string, unknown>;
     const type = String(o["@type"] ?? "");
     if (/^(BreadcrumbList|ListItem|ImageObject|SearchAction|EntryPoint|ReadAction)$/.test(type)) return;
     const name = typeof o.name === "string" ? o.name : typeof o.headline === "string" ? o.headline : "";
+    // People the site itself publishes: Organization.founder / employee / Person with a job title.
+    if (/Person/.test(type) || /^(founder|founders|employee|employees|ceo|member|members)$/i.test(key)) {
+      const job = typeof o.jobTitle === "string" ? o.jobTitle : /^founders?$/i.test(key) ? "Founder" : /^ceo$/i.test(key) ? "CEO" : "";
+      if (name && job && name.split(" ").length >= 2 && name.length <= 60) people.push(normalizeWhitespace(`${name}, ${job}`));
+      return;
+    }
     const desc = typeof o.description === "string" ? o.description : "";
     const line = normalizeWhitespace([name, desc].filter(Boolean).join(": "));
     if (line && line.split(" ").length >= 3 && line.length <= 600) out.push(line);
-    for (const v of Object.values(o)) if (typeof v === "object") visit(v, depth + 1);
+    for (const [k, v] of Object.entries(o)) if (typeof v === "object") visit(v, depth + 1, k);
   };
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
-      visit(JSON.parse($(el).text()), 0);
+      visit(JSON.parse($(el).text()), 0, "");
     } catch {
       /* invalid JSON-LD is ignored */
     }
   });
-  return deduplicateText(out).slice(0, 12);
+  return [...deduplicateText(people).slice(0, 8), ...deduplicateText(out).slice(0, 12)];
 }
 
 /** Remove boilerplate elements in place. Returns certification signals found in removed footers. */

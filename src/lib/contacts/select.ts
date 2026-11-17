@@ -24,7 +24,12 @@ export function looksLikeName(s: string): boolean {
 }
 
 function cleanTitle(t: string): string | null {
-  const s = t.replace(/\s+/g, " ").replace(/^[,|–—:-]\s*/, "").trim();
+  const s = t
+    .replace(/\s+/g, " ")
+    .replace(/^[,|–—:-]\s*/, "")
+    // Drop trailing social / UI labels: "Co-Founder · LinkedIn", "CEO | Twitter".
+    .replace(/\s*[·|•]\s*(linkedin|twitter|x|github|email|website|read more|bio)\s*$/i, "")
+    .trim();
   if (!TITLE_RE.test(s) || s.split(" ").length > 10 || /[.!?]$/.test(s)) return null;
   return s;
 }
@@ -84,6 +89,22 @@ export function extractPeople(linesIn: string[], sourceUrl: string, companyKeys:
     }
     const roleName = line.match(/\b(CEO|CTO|CISO|COO|Co-?founder|Founder)(?: and Co-?founder)?,? ([A-Z][a-z]+ [A-Z][a-z]+)\b/);
     if (roleName && looksLikeName(roleName[2])) push(roleName[2], roleName[1], line);
+    // Origin story: "Uku Taht started Plausible in 2018" / "Jane Doe and John Roe founded Acme".
+    const keyAlt = companyKeys.map((k) => k.replace(/[^a-z0-9]/gi, "")).filter((k) => k.length >= 3).join("|");
+    if (keyAlt) {
+      const origin = line.match(new RegExp(`\\b([A-Z][a-z'’-]+ [A-Z][a-z'’-]+)(?: and ([A-Z][a-z'’-]+ [A-Z][a-z'’-]+))? (?:started|founded|co-?founded|launched|created|built) (?:${keyAlt})\\b`, "i"));
+      if (origin) for (const n of [origin[1], origin[2]].filter(Boolean) as string[]) if (looksLikeName(n)) push(n, origin[2] ? "Co-founder" : "Founder", line);
+    }
+    // Press style: '…," said Jane Doe, CEO of Acme.' / 'Jane Doe, co-founder and CEO, said …'
+    const NAME = "([A-Z][a-z'’-]+(?: [A-Z][a-z'’-]+){1,2})";
+    const ROLE = "((?:co-?founder|founder|chief [a-z]+(?: [a-z]+)? officer|ceo|cto|coo|cfo|ciso|cio|president|head of [a-z&/ ]{2,30}|vp(?: of)? [a-z&/ ]{2,30}|vice president(?: of)? [a-z&/ ]{2,30}|director of [a-z&/ ]{2,30})(?:,? (?:and|&) (?:co-?founder|founder|ceo|cto|coo|president))?)";
+    const said = line.match(new RegExp(`\\b(?:said|says|explained|explains|added|adds|according to)\\s+${NAME},\\s+${ROLE}(?:\\s+(?:at|of)\\s+([A-Z][\\w.&-]+(?: [A-Z][\\w.&-]+)?))?`, "i"));
+    const saidAfter = line.match(new RegExp(`${NAME},\\s+${ROLE}(?:\\s+(?:at|of)\\s+([A-Z][\\w.&-]+(?: [A-Z][\\w.&-]+)?))?,\\s+(?:said|says|explained|added)\\b`, "i"));
+    for (const m of [said, saidAfter]) {
+      if (!m || !looksLikeName(m[1])) continue;
+      const title = m[3] ? `${m[2]} at ${m[3]}` : m[2];
+      push(m[1], title.replace(/^./, (c) => c.toUpperCase()), line);
+    }
   }
   return out.slice(0, 40);
 }

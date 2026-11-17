@@ -216,7 +216,8 @@ export function buildResearchGraph(deps: AgentDeps) {
       // With a sitemap, a page type it doesn't list most likely doesn't exist: don't burn hits guessing.
       // Exception: /security. Certification is the disqualifying gate and sitemaps often omit trust pages,
       // so one guessed /security check is always worth it.
-      const guessed = sitemapUrls.length ? guessedCandidates(origin, known).filter((g) => g.url === `${origin}/security`) : guessedCandidates(origin, known);
+      // ...and /about, the most common place leadership is named (worth one try for a real contact name).
+      const guessed = sitemapUrls.length ? guessedCandidates(origin, known).filter((g) => g.url === `${origin}/security` || g.url === `${origin}/about`) : guessedCandidates(origin, known);
       const candidates = [...known, ...guessed].filter((x) => !s.visitedUrls.includes(x.url));
       s = log({ ...s, candidateLinks: candidates }, "clean_content", "links_discovered", { fromHomepage: links.length, fromSitemap: fromSitemap.length, candidates: candidates.map((x) => `${x.pageType}: ${x.url} (${x.source})`).slice(0, 20) });
     }
@@ -239,10 +240,16 @@ export function buildResearchGraph(deps: AgentDeps) {
     s = { ...s, ...outcome.patch };
     if (s.contact?.source !== "manual") {
       const keys = [s.domain.split(".")[0], (s.companyName ?? "").toLowerCase().replace(/[^a-z0-9]/g, "")];
-      const people = extractPeople([...c.shortLines, ...c.text.split("\n")], c.url, keys);
+      const lines = [...c.shortLines, ...c.text.split("\n")].map((l) => l.replace(/^Structured data:\s*/, ""));
+      const people = extractPeople(lines, c.url, keys);
       const known = s.contactCandidates.map((m) => ({ name: m.name, title: m.title ?? "", quote: m.supportingQuote ?? "", sourceUrl: m.sourceUrl ?? c.url }));
       const ranked = rankPeople([...known, ...people.filter((p) => !known.some((k) => k.name === p.name))]);
-      if (ranked.length) s = { ...s, contactCandidates: ranked.slice(0, 8), contact: ranked[0], contactStatus: "found" };
+      if (ranked.length) {
+        // Homepage mentions are often customer testimonials: prefer people named on team/about/press pages.
+        const onHomepage = (u: string | null) => s.pages.some((p) => p.url === u && p.pageType === "homepage");
+        const best = ranked.find((p) => !onHomepage(p.sourceUrl)) ?? ranked[0];
+        s = { ...s, contactCandidates: ranked.slice(0, 8), contact: best, contactStatus: "found" };
+      }
     }
     s = log(s, "extract_facts", "evidence_validated", {
       url: c.url,
