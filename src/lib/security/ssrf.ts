@@ -84,3 +84,34 @@ export async function assertPublicUrl(rawUrl: string, resolve: HostResolver = de
   if (bad) throw new UnsafeUrlError(`${host} resolves to private address ${bad}`);
   return url;
 }
+
+type LookupAll = (hostname: string, options: { all: true; verbatim: boolean }, cb: (err: NodeJS.ErrnoException | null, addresses: Array<{ address: string; family: number }>) => void) => void;
+
+/**
+ * DNS lookup for the HTTP connection itself: refuses to connect to private, loopback, link-local or
+ * metadata addresses. This closes the DNS-rebinding gap between our pre-check and the socket connect.
+ */
+export function makeSafeLookup(lookupImpl?: LookupAll) {
+  return function safeLookup(
+    hostname: string,
+    options: { all?: boolean; family?: number } | number | undefined,
+    callback: (err: NodeJS.ErrnoException | null, address?: string | Array<{ address: string; family: number }>, family?: number) => void,
+  ): void {
+    const run = (lookup: LookupAll) =>
+      lookup(hostname, { all: true, verbatim: true }, (err, addresses) => {
+        if (err) return callback(err);
+        const bad = addresses.find((a) => isPrivateAddress(a.address));
+        if (bad || addresses.length === 0) {
+          const e = new Error(`Blocked connection to private address for ${hostname}`) as NodeJS.ErrnoException;
+          e.code = "ESSRF";
+          return callback(e);
+        }
+        if (typeof options === "object" && options?.all) return callback(null, addresses);
+        return callback(null, addresses[0].address, addresses[0].family);
+      });
+    if (lookupImpl) run(lookupImpl);
+    else import("node:dns").then(({ lookup }) => run(lookup as unknown as LookupAll));
+  };
+}
+
+export const safeLookup = makeSafeLookup();

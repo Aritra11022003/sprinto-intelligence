@@ -1,7 +1,7 @@
 "use client";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Inbox, Loader2, Mail, Quote, Search, ShieldCheck, Sparkles, UserRound } from "lucide-react";
+import { ArrowRight, ArrowUpRight, CheckCircle2, CircleAlert, Inbox, Loader2, Mail, Quote, Search, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import { computeAnalytics, monthLabel } from "@/lib/analytics";
 import { loadRuns, saveRun, type StoredRun } from "@/lib/history";
 import { parseResearchInput } from "@/lib/security/domain";
@@ -201,18 +201,35 @@ export function ResearchApp() {
               ))}
             </div>
             {preview.entries.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {preview.entries.map((e) => (
-                  <span key={e.domain} className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] py-0.5 pl-0.5 pr-2.5 text-xs text-zinc-200">
-                    <CompanyAvatar name={e.domain} domain={e.domain} size="sm" />
-                    <span className="mono">{e.domain}</span>
-                    {e.manualContact && <span className="inline-flex items-center gap-0.5 text-violet-300"><UserRound className="h-3 w-3" />{e.manualContact.name}</span>}
-                  </span>
-                ))}
+              <div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.04] p-2.5">
+                <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-emerald-300"><CheckCircle2 className="h-3.5 w-3.5" /> Will research {preview.entries.length} domain{preview.entries.length === 1 ? "" : "s"}</div>
+                <ul className="space-y-1">
+                  {preview.entries.map((e) => (
+                    <li key={e.domain} className="flex min-w-0 items-center gap-2 text-xs">
+                      <CompanyAvatar name={e.domain} domain={e.domain} size="sm" />
+                      <span className="mono shrink-0 text-zinc-100">{e.domain}</span>
+                      {e.manualContact && <span className="inline-flex shrink-0 items-center gap-0.5 text-violet-300"><UserRound className="h-3 w-3" />{e.manualContact.name}</span>}
+                      {e.source && e.source.toLowerCase() !== e.domain && (
+                        <span className="min-w-0 truncate text-zinc-500" title={e.source}>← {e.source}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
             {preview.rejected.length > 0 && !error && (
-              <ul className="space-y-0.5 text-xs text-amber-300">{preview.rejected.slice(0, 4).map((r, i) => <li key={i}><span className="mono">{r.input}</span>: {r.reason} (will be skipped)</li>)}</ul>
+              <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.05] p-2.5">
+                <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-amber-300"><CircleAlert className="h-3.5 w-3.5" /> Can&apos;t use {preview.rejected.length} entr{preview.rejected.length === 1 ? "y" : "ies"} (not researched)</div>
+                <ul className="space-y-1">
+                  {preview.rejected.slice(0, 8).map((r, i) => (
+                    <li key={i} className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-xs">
+                      <span className="mono max-w-full truncate text-zinc-200" title={r.input}>{r.input}</span>
+                      <span className="text-amber-200/80">{r.reason}</span>
+                    </li>
+                  ))}
+                  {preview.rejected.length > 8 && <li className="text-xs text-zinc-500">…and {preview.rejected.length - 8} more</li>}
+                </ul>
+              </div>
             )}
             {error && (
               <Alert tone="red" title={error.message}>
@@ -220,7 +237,7 @@ export function ResearchApp() {
               </Alert>
             )}
             <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-zinc-500">Know the right person? <span className="mono text-zinc-300">acme.com | Priya Raman | CTO</span></p>
+              <p className="text-xs text-zinc-500">Paste domains, URLs or a numbered list. Known contact: <span className="mono text-zinc-300">acme.com | Priya Raman | CTO</span></p>
               <Button type="submit" size="lg" disabled={busy} className="shrink-0">
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                 {busy ? `Researching… ${Math.round(elapsed / 1000)}s` : "Start research"}

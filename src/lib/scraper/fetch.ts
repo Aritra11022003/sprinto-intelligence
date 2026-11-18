@@ -17,8 +17,19 @@ export interface FetchDeps {
   maxRetries: number;
 }
 
+// HTTP client whose sockets can only connect to public addresses (DNS re-checked at connect time).
+let pinnedFetch: typeof fetch | null = null;
+async function getPinnedFetch(): Promise<typeof fetch> {
+  if (pinnedFetch) return pinnedFetch;
+  const { Agent, fetch: undiciFetch } = await import("undici");
+  const { safeLookup } = await import("@/lib/security/ssrf");
+  const agent = new Agent({ connect: { lookup: safeLookup as never }, connections: 64 });
+  pinnedFetch = ((input: RequestInfo | URL, init?: RequestInit) => undiciFetch(input as never, { ...(init as object), dispatcher: agent } as never)) as unknown as typeof fetch;
+  return pinnedFetch;
+}
+
 export const defaultFetchDeps: FetchDeps = {
-  fetchImpl: (...args) => fetch(...args),
+  fetchImpl: async (input, init) => (await getPinnedFetch())(input, init),
   resolve: defaultResolver,
   sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   timeoutMs: 10_000,
@@ -105,6 +116,8 @@ async function attemptOnce(url: string, deps: FetchDeps, opts: FetchOptions): Pr
       });
     } catch (err) {
       clearTimeout(timer);
+      const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+      if (cause?.code === "ESSRF") throw new UnsafeUrlError(cause.message ?? "Blocked connection to a private address");
       if ((err as Error).name === "AbortError") throw new TransientError("timeout");
       throw new TransientError(`network: ${(err as Error).message}`);
     }

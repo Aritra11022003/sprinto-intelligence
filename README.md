@@ -85,7 +85,7 @@ Browser (Next.js page) ──POST /api/research──▶ Vercel function (stream
 ### Security
 
 * Only `GMAIL_USER_EMAIL` can ever receive email. It's a server-side allowlist, and a client-supplied `to` is rejected. Subject header injection is stripped. Duplicate sends within a run are prevented.
-* SSRF protection: http(s) only, ports 80/443, no credentials in URLs, DNS-resolved IPs checked against private, loopback, link-local, CGNAT and metadata ranges, **every redirect revalidated**, off-site redirects blocked (except a homepage brand redirect).
+* SSRF protection: http(s) only, ports 80/443, no credentials in URLs, DNS-resolved IPs checked against private, loopback, link-local, CGNAT and metadata ranges, **every redirect revalidated**, off-site redirects blocked (except a homepage brand redirect), and **DNS re-checked at socket connect time** (a custom HTTP agent refuses private addresses, closing DNS-rebinding).
 * 10 s timeout, 2 MB page cap, honest bot user-agent, robots.txt respected.
 * Zod validation on every API body. Per-IP rate limits on research and send.
 * The Gmail app password and Resend key live only in server env vars.
@@ -108,6 +108,19 @@ Any of these bodies work (up to 10 companies per request):
 ```
 
 A `text/plain` body (one domain per line), a form post (`domain=acme.com`), or `GET /api/research?domain=acme.com` also work.
+
+**Messy pasted lists are fine.** Each entry is scanned for a domain or URL, and everything else (numbering, bullets, company names, punctuation) is dropped:
+
+| You paste | Researched as |
+|---|---|
+| `1. Zoho — https://www.zoho.com` | `zoho.com` |
+| `2) Freshworks: https://www.freshworks.com/crm/?utm=x#top` | `freshworks.com` |
+| `• Razorpay (razorpay.com)` | `razorpay.com` |
+| `HTTPS://WWW.Acme.COM/Pricing` | `acme.com` |
+| `a.com, b.io; c.dev` | `a.com`, `b.io`, `c.dev` |
+| `acme.com \| Jane Doe \| CTO` | `acme.com` (contact: Jane Doe, CTO) |
+
+Hostnames are lowercased, `www.` and paths/queries/fragments removed, and duplicates merged. Nothing is silently dropped: entries without a usable domain come back in `rejected` with a reason (`No domain or URL found`, `Duplicate of …`, `IP addresses are not allowed`, `Private, local or reserved hostnames are not allowed`, `Looks like an email address`, …). The dashboard previews both lists before research starts.
 
 **Response** (`200`):
 

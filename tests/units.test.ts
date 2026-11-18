@@ -200,7 +200,7 @@ describe("email openers", () => {
 describe("research input", () => {
   it("accepts domains with an optional known contact", () => {
     const r = parseResearchInput("acme.com | Priya Raman | CTO\nlinear.app\nbeta.io, Sam Lee, Head of Security\na.com b.com", 10);
-    expect(r.entries).toEqual([
+    expect(r.entries.map(({ domain, manualContact }) => ({ domain, manualContact }))).toEqual([
       { domain: "acme.com", manualContact: { name: "Priya Raman", title: "CTO" } },
       { domain: "linear.app", manualContact: null },
       { domain: "beta.io", manualContact: { name: "Sam Lee", title: "Head of Security" } },
@@ -382,5 +382,96 @@ describe("dashboard analytics", () => {
     expect(a.verdicts.find((v) => v.key === "qualified")?.share).toBe(0.5);
     expect(a.topSignals[0]).toEqual({ label: "Certified: SOC 2", count: 2 });
     expect(computeAnalytics([], 7, now).qualifiedRate).toBeNull(); // empty state never divides by zero
+  });
+});
+
+describe("domain input parser (pasted lists, URLs, company names)", () => {
+  const domainsOf = (text: string) => parseResearchInput(text, 25).entries.map((e) => e.domain);
+
+  it("acceptance: '1. Zoho — https://www.zoho.com' → zoho.com", () => {
+    const r = parseResearchInput("1. Zoho — https://www.zoho.com", 10);
+    expect(r.entries.map((e) => e.domain)).toEqual(["zoho.com"]);
+    expect(r.rejected).toEqual([]);
+  });
+
+  it("accepts bare domains, full URLs, www URLs and numbered / bulleted lists", () => {
+    const input = [
+      "zoho.com",
+      "https://www.freshworks.com",
+      "www.razorpay.com",
+      "1. Chargebee - https://www.chargebee.com",
+      "2) Postman: postman.com",
+      "(3) BrowserStack — https://browserstack.com/",
+      "#4 Darwinbox – darwinbox.com",
+      "- Icertis https://www.icertis.com",
+      "* Zenoti (zenoti.com)",
+      "• Whatfix → https://whatfix.com",
+      "[ ] Leadsquared leadsquared.com",
+    ].join("\n");
+    expect(domainsOf(input)).toEqual(["zoho.com", "freshworks.com", "razorpay.com", "chargebee.com", "postman.com", "browserstack.com", "darwinbox.com", "icertis.com", "zenoti.com", "whatfix.com", "leadsquared.com"]);
+  });
+
+  it("lowercases, strips www, paths, query strings, fragments, ports and trailing punctuation", () => {
+    expect(domainsOf("HTTPS://WWW.Acme.COM/Pricing?utm_source=x&a=1#plans")).toEqual(["acme.com"]);
+    expect(domainsOf("acme.io/about-us.")).toEqual(["acme.io"]);
+    expect(domainsOf("Visit https://www.beta.dev:443/x, thanks!")).toEqual(["beta.dev"]);
+    expect(domainsOf('"gamma.ai"')).toEqual(["gamma.ai"]);
+  });
+
+  it("deduplicates domains and reports the duplicates", () => {
+    const r = parseResearchInput("1. Zoho — https://www.zoho.com\nzoho.com\nhttps://zoho.com/crm", 10);
+    expect(r.entries.map((e) => e.domain)).toEqual(["zoho.com"]);
+    expect(r.rejected.map((x) => x.reason)).toEqual(["Duplicate of zoho.com", "Duplicate of zoho.com"]);
+  });
+
+  it("never silently discards: entries without a domain are rejected with a reason", () => {
+    const r = parseResearchInput("3. Acme Corp\nstripe.com, linear.app ; not a domain\na.com, garbage, b.io", 10);
+    expect(r.entries.map((e) => e.domain)).toEqual(["stripe.com", "linear.app", "a.com", "b.io"]);
+    expect(r.rejected.map((x) => x.input)).toEqual(["3. Acme Corp", "not a domain", "garbage"]);
+    for (const x of r.rejected) expect(x.reason).toMatch(/No domain or URL found/);
+  });
+
+  it("keeps a company name next to its URL as one entry", () => {
+    const r = parseResearchInput("Zoho, https://zoho.com", 10);
+    expect(r.entries.map((e) => e.domain)).toEqual(["zoho.com"]);
+    expect(r.rejected).toEqual([]);
+    expect(r.entries[0].source).toBe("Zoho, https://zoho.com");
+  });
+
+  it("still supports an optional known contact", () => {
+    const r = parseResearchInput("1. Infisical — https://infisical.com | Milos Vetesnik | Co-founder\ntwenty.com, Charles Bochet, CEO", 10);
+    expect(r.entries).toMatchObject([
+      { domain: "infisical.com", manualContact: { name: "Milos Vetesnik", title: "Co-founder" } },
+      { domain: "twenty.com", manualContact: { name: "Charles Bochet", title: "CEO" } },
+    ]);
+  });
+
+  it("rejects localhost, private / metadata IPs, internal hosts and emails, each with a reason", () => {
+    const r = parseResearchInput(["http://localhost:3000", "localhost", "127.0.0.1", "10.0.0.5", "192.168.1.1", "http://169.254.169.254/latest/meta-data", "metadata.google.internal", "vault.corp", "[::1]", "ceo@acme.com", "ftp://files.acme.com"].join("\n"), 20);
+    expect(r.entries).toEqual([]);
+    const reasons = r.rejected.map((x) => x.reason).join(" | ");
+    expect(r.rejected).toHaveLength(11);
+    expect(reasons).toMatch(/Private, local or reserved/);
+    expect(reasons).toMatch(/IP addresses are not allowed/);
+    expect(reasons).toMatch(/email address/);
+    expect(reasons).toMatch(/Only http\(s\)/);
+  });
+
+  it("enforces the per-job limit after deduplication", () => {
+    const r = parseResearchInput("a.com\nb.com\na.com\nc.com", 2);
+    expect(r.entries.map((e) => e.domain)).toEqual(["a.com", "b.com"]);
+    expect(r.rejected.map((x) => x.reason)).toEqual(["Duplicate of a.com", "Exceeds the limit of 2 domains per job"]);
+  });
+});
+
+describe("connect-time SSRF guard (DNS rebinding)", () => {
+  it("refuses to open a socket to a private address even if the pre-check passed", async () => {
+    const { makeSafeLookup } = await import("@/lib/security/ssrf");
+    const rebinding = makeSafeLookup((_h, _o, cb) => cb(null, [{ address: "127.0.0.1", family: 4 }]));
+    const err = await new Promise<NodeJS.ErrnoException | null>((resolve) => rebinding("rebind.example.com", { all: true }, (e) => resolve(e)));
+    expect(err?.code).toBe("ESSRF");
+    const publicHost = makeSafeLookup((_h, _o, cb) => cb(null, [{ address: "93.184.216.34", family: 4 }]));
+    const ok = await new Promise<string | undefined>((resolve) => publicHost("example.com", {}, (_e, addr) => resolve(addr as string)));
+    expect(ok).toBe("93.184.216.34");
   });
 });
